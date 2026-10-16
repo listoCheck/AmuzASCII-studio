@@ -33,7 +33,7 @@ async function beginVideoExport(){await startRecording();if(recording.value)expo
     <aside class="settings">
       <div class="settingshead"><h1>{{t('Лаборатория символов')}}<span>{{t('Настройте свой визуальный язык')}}</span></h1><button :title="t('Сбросить настройки')" @click="reset">↺</button></div>
       <div class="scroll">
-        <section class="upload" role="button" tabindex="0" @click="fileInput.click()" @keydown.enter="fileInput.click()" @keydown.space.prevent="fileInput.click()" @dragover.prevent @drop.prevent.stop="drop"><span class="uploadicon">↥</span><strong>{{t('Загрузить фото или видео')}}</strong><small>{{t('или перетащите его на холст')}}</small><em>{{t('Фото до 20 МБ · MP4 / WebM до 250 МБ')}}</em></section>
+        <section class="upload" role="button" tabindex="0" @click="fileInput.click()" @keydown.enter="fileInput.click()" @keydown.space.prevent="fileInput.click()" @dragover.prevent @drop.prevent.stop="drop"><span class="uploadicon">↥</span><strong>{{t('Загрузить фото или видео')}}</strong><small>{{t('или перетащите его на холст')}}</small><small>{{t('или вставьте изображение: Ctrl+V / ⌘V')}}</small><em>{{t('Фото до 20 МБ · MP4 / WebM до 250 МБ')}}</em></section>
         <input ref="fileInput" type="file" accept="image/*,video/*,.mp4,.webm,.mov,.m4v,.ogv" hidden @change="upload($event.target.files[0]); $event.target.value=''">
         <p v-if="error" class="error" role="alert">{{t(error)}}</p><p v-if="notice" class="notice" role="status">{{t(notice)}}</p>
         <div class="sectiontitle"><span>01</span>{{t('СИМВОЛЫ')}}</div>

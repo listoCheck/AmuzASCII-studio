@@ -6,6 +6,7 @@ import {readDuration} from './video.js'
 import {preferences} from './preferences.js'
 import {safeFilename,supportedVideoFormats,htmlExport} from './export.js'
 import {inkLayout,brighterInk} from './typography.js'
+import {clipboardImage} from './clipboard.js'
 
 export default function useEditor() {
   const defaults=defaultSettings
@@ -327,6 +328,14 @@ export default function useEditor() {
     loadController?.abort();openBlob(selected,selected.name)
   }
   function drop(event){upload(event.dataTransfer.files[0])}
+  function pasteImage(event){
+    // Keep ordinary text pasting intact in settings and modal dialogs.
+    if(event.defaultPrevented||document.querySelector('dialog[open]')||event.target?.closest?.('input,textarea,[contenteditable]:not([contenteditable="false"])'))return
+    const selected=clipboardImage(event.clipboardData)
+    if(!selected)return
+    event.preventDefault()
+    upload(selected.name?selected:new File([selected],'clipboard.png',{type:selected.type}))
+  }
   function reset(){Object.assign(settings,defaults);colorMode.value='palette';showOriginal.value=false;zoom.value=1;selectPalette(0);schedule()}
   function setZoom(delta){zoom.value=Math.max(.25,Math.min(4,zoom.value+delta))}
   function downloadBlob(blob,ext){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`${safeFilename(fileName.value)}.${ext}`;a.click();setTimeout(()=>URL.revokeObjectURL(url),2000)}
@@ -364,11 +373,12 @@ export default function useEditor() {
   onMounted(async()=>{
     resizeObserver=new ResizeObserver(resizePreview);resizeObserver.observe(stage.value)
     window.addEventListener('resize',resizePreview)
+    window.addEventListener('paste',pasteImage)
     loadController=new AbortController()
     try{const response=await fetch('/api/demo',{signal:loadController.signal});if(!response.ok)throw new Error();const blob=await response.blob();if(!file.value)await openBlob(blob)}
     catch(e){if(e.name!=='AbortError')error.value='Не удалось загрузить демо. Загрузите своё изображение.'}
   })
   const presetControls=usePresets(settings,{colorMode,foreground,background,paletteIndex},error,notice)
-  onBeforeUnmount(()=>{disposed=true;previewWorker?.terminate();loadId++;loadController?.abort();cancelAnimationFrame(frame);resizeObserver?.disconnect();window.removeEventListener('resize',resizePreview);releaseMedia()})
+  onBeforeUnmount(()=>{disposed=true;previewWorker?.terminate();loadId++;loadController?.abort();cancelAnimationFrame(frame);resizeObserver?.disconnect();window.removeEventListener('resize',resizePreview);window.removeEventListener('paste',pasteImage);releaseMedia()})
   return {...presetControls,settings,art,fileInput,file,result,stage,busy,error,notice,showOriginal,zoom,format,colorMode,foreground,background,paletteIndex,palettes,charsets,controls,canvasStyle,frameTime,vectorSrc,selectPalette,upload,drop,reset,setZoom,download,copy,detailDraft,updateDetail,commitDetail,isVideo,playing,currentTime,duration,volume,playbackRate,loop,videoFPS,recording,canRecord,togglePlay,seek,timeLabel,fullscreen,startRecording,stopRecording,exportQuality,fileName,videoFormat,videoFormats}
 }

@@ -54,6 +54,16 @@ test('colored HTML export escapes characters and title and declares its language
   assert.ok(html.includes('&amp;'));assert.ok(html.includes('color:#aabbcc'));assert.ok(html.includes('background:#001122'))
 })
 import {svgPreview} from './svgPreview.js'
+import {clipboardImage} from './clipboard.js'
+
+test('clipboard extracts image files, ignores text/HTML and supports file-only clipboard data',()=>{
+  const image={name:'capture.png',type:'image/png'}
+  assert.equal(clipboardImage({items:[{kind:'string',type:'text/html'},{kind:'file',type:'image/png',getAsFile:()=>image}]}),image)
+  assert.equal(clipboardImage({items:[{kind:'file',type:'image/png',getAsFile:()=>null}],files:[image]}),image)
+  assert.equal(clipboardImage({files:[{type:'text/plain'},image]}),image)
+  assert.equal(clipboardImage({items:[{kind:'string',type:'text/plain'}]}),null)
+  assert.equal(clipboardImage(null),null)
+})
 
 test('SVG preview keeps text contours, escapes custom symbols and uses one element per row',()=>{
   const svg=svgPreview({columns:3,rows:2,width:300,height:400,lines:['<& ','M@#']},{size:18,baseline:13},'data:image/png;base64,AA==','#123456')
