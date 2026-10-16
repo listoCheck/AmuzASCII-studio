@@ -1,0 +1,23 @@
+{
+  "app": "AmuzASCII",
+  "version": 1,
+  "name": "Мягкая бумага",
+  "settings": {
+    "columns": 160,
+    "charset": "classic",
+    "custom": " .:-=+*#%@",
+    "brightness": 8,
+    "contrast": 5,
+    "saturation": 100,
+    "gamma": 1.2,
+    "rotation": 0,
+    "mirror": false,
+    "invert": false
+  },
+  "appearance": {
+    "colorMode": "palette",
+    "foreground": "#222e24",
+    "background": "#eee9dc",
+    "paletteIndex": 4
+  }
+}

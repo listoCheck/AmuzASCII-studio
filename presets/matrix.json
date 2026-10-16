@@ -1,0 +1,23 @@
+{
+  "app": "AmuzASCII",
+  "version": 1,
+  "name": "Матрица",
+  "settings": {
+    "columns": 160,
+    "charset": "matrix",
+    "custom": " .:-=+*#%@",
+    "brightness": 0,
+    "contrast": 35,
+    "saturation": 100,
+    "gamma": 1.2,
+    "rotation": 0,
+    "mirror": false,
+    "invert": false
+  },
+  "appearance": {
+    "colorMode": "palette",
+    "foreground": "#b6ffb0",
+    "background": "#06110b",
+    "paletteIndex": 1
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "app": "AmuzASCII",
+  "version": 1,
+  "name": "Видео / быстрый",
+  "settings": {
+    "columns": 100,
+    "charset": "classic",
+    "custom": " .:-=+*#%@",
+    "brightness": 0,
+    "contrast": 25,
+    "saturation": 100,
+    "gamma": 1.2,
+    "rotation": 0,
+    "mirror": false,
+    "invert": false
+  },
+  "appearance": {
+    "colorMode": "original",
+    "foreground": "#d1e8a0",
+    "background": "#10140f",
+    "paletteIndex": 0
+  }
+}

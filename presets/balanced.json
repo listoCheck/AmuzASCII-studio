@@ -1,0 +1,23 @@
+{
+  "app": "AmuzASCII",
+  "version": 1,
+  "name": "Сбалансированный",
+  "settings": {
+    "columns": 160,
+    "charset": "classic",
+    "custom": " .:-=+*#%@",
+    "brightness": 0,
+    "contrast": 20,
+    "saturation": 100,
+    "gamma": 1,
+    "rotation": 0,
+    "mirror": false,
+    "invert": false
+  },
+  "appearance": {
+    "colorMode": "palette",
+    "foreground": "#d1e8a0",
+    "background": "#10140f",
+    "paletteIndex": 0
+  }
+}

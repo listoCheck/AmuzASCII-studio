@@ -1,0 +1,9 @@
+{
+  "name": "glyph-studio",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "dev": "vite --host 127.0.0.1", "build": "vite build", "preview": "vite preview", "test": "node --test src/ascii.test.js src/presets.test.js src/interface.test.js" },
+  "dependencies": { "vue": "^3.5.0" },
+  "devDependencies": { "vite": "^7.0.0", "@vitejs/plugin-vue": "^6.0.0" }
+}

@@ -1,0 +1,70 @@
+<script setup>
+import {ref} from 'vue'
+import useEditor from './useEditor.js'
+import AppearancePanel from './AppearancePanel.vue'
+import {t,number} from './i18n.js'
+import {preferences} from './preferences.js'
+import {imageFormats} from './export.js'
+const {settings,art,fileInput,file,result,stage,busy,error,notice,showOriginal,zoom,format,colorMode,foreground,background,paletteIndex,palettes,charsets,controls,canvasStyle,frameTime,vectorSrc,selectPalette,upload,drop,reset,setZoom,download,copy,detailDraft,updateDetail,commitDetail,savedPresets,presetName,selectedPreset,presetInput,builtinPresets,applySelected,savePreset,removePreset,exportPreset,importPreset,isVideo,playing,currentTime,duration,volume,playbackRate,loop,videoFPS,recording,canRecord,togglePlay,seek,timeLabel,fullscreen,startRecording,stopRecording,exportQuality,fileName,videoFormat,videoFormats}=useEditor()
+
+const exportDialog=ref(null)
+function openExport(){commitDetail();exportDialog.value.showModal()}
+function stepDetail(delta){commitDetail();updateDetail(String(Math.max(40,Math.min(1000,settings.columns+delta))))}
+function resetPreset(){reset();selectedPreset.value='';presetName.value=t('Мой набор');error.value='';notice.value='Настройки сброшены. Сохранённые наборы остаются в библиотеке.'}
+async function beginVideoExport(){await startRecording();if(recording.value)exportDialog.value.close()}
+</script>
+
+<template>
+  <header><a class="brand" href="/"><img class="brandicon" src="/assets/favicon.svg" alt="">AmuzASCII<span>ASCII STUDIO</span></a><div class="tag">{{t('ИЗ ПИКСЕЛЕЙ В СИМВОЛЫ.')}}</div><AppearancePanel/><button class="primary" :disabled="busy || !result || (!!error && !recording)" @click="openExport">{{recording?'●':'↗'}} {{t('Экспорт')}}</button></header>
+  <main>
+    <aside class="rail"><button class="selected" :title="t('Редактор')">⌘</button><button :title="t('Загрузить изображение или видео')" @click="fileInput.click()">↥</button><div class="railbottom">V.01</div></aside>
+    <section class="workspace">
+      <div class="worktop"><div><span class="live"></span>{{t('ХОЛСТ')}}<span class="muted">/</span> <span class="filename">{{ file?.name || 'botanical-study.demo' }}</span></div><button :disabled="recording" @click="showOriginal=!showOriginal">◫ {{t(showOriginal?'ASCII-арт':'Оригинал')}}</button></div>
+      <div class="stageframe" :class="{'has-video':isVideo}"><div ref="stage" class="stage" @dragover.prevent @drop.prevent="drop" :aria-busy="busy"><canvas v-show="!vectorSrc" ref="art" :aria-label="t('Предпросмотр ASCII-арта')" :style="canvasStyle"></canvas><img v-if="vectorSrc" class="vector-preview" :src="vectorSrc" :alt="t('Предпросмотр ASCII-арта')" :style="canvasStyle"></div><div class="stagecaption"><span>{{busy?t('ОБРАБОТКА…'):'AmuzASCII / EXPERIMENT 001'}}</span><span>{{vectorSrc?'SVG':'LIVE'}} · {{number(frameTime)}} {{t('мс')}}</span></div>
+        <div class="ink-brightness"><label for="ink-brightness">{{t('Яркость символов')}}</label><input id="ink-brightness" v-model.number="settings.inkBrightness" type="range" min="0" max="300" step="1"><output for="ink-brightness">{{number(settings.inkBrightness)}}%</output></div>
+        <div v-if="isVideo" class="video-player" :aria-label="t('ASCII-видеоплеер')">
+          <div class="timeline"><button @click="togglePlay" :aria-label="t(playing?'Пауза':'Воспроизвести')">{{ playing?'Ⅱ':'▶' }}</button><span>{{ timeLabel(currentTime) }}</span><input type="range" :aria-label="t('Позиция видео')" min="0" :max="duration" step="0.01" :value="currentTime" @input="seek($event.target.value)"><span>{{ timeLabel(duration) }}</span></div>
+          <div class="player-tools"><label>{{t('Громкость')}}<input v-model.number="volume" type="range" :aria-label="t('Громкость')" min="0" max="1" step="0.05"></label><label>{{t('Скорость')}}<select v-model.number="playbackRate" :aria-label="t('Скорость видео')"><option :value="0.5">{{number(0.5)}}×</option><option :value="1">1×</option><option :value="1.5">{{number(1.5)}}×</option><option :value="2">2×</option></select></label><label>FPS<select v-model.number="videoFPS" :aria-label="t('Частота ASCII-видео')"><option :value="12">12</option><option :value="24">24</option><option :value="30">30</option><option :value="60">60</option></select></label><label><input v-model="loop" type="checkbox" :disabled="recording">{{t('Повтор')}}</label><button @click="fullscreen" :aria-label="t('На весь экран')">⛶</button></div>
+        </div>
+      </div>
+      <div class="workbottom"><span>{{ result ? `${result.columns} × ${result.rows}` : '—' }}</span><span>{{result?number(result.columns*result.rows):'0'}} {{t('СИМВОЛОВ')}}</span><div><button :aria-label="t('Уменьшить')" @click="setZoom(-.25)">−</button><span>{{ Math.round(zoom*100) }}%</span><button :aria-label="t('Увеличить')" @click="setZoom(.25)">+</button><button @click="zoom=1">{{t('Вписать')}}</button></div></div>
+      <div class="under"><span>{{t('ВАША КАРТИНКА. НОВЫЙ ЯЗЫК.')}}</span><span>LIVE · {{number(frameTime)}} {{t('мс')}} · {{t('Обработка в браузере')}}</span></div>
+    </section>
+    <aside class="settings">
+      <div class="settingshead"><h1>{{t('Лаборатория символов')}}<span>{{t('Настройте свой визуальный язык')}}</span></h1><button :title="t('Сбросить настройки')" @click="reset">↺</button></div>
+      <div class="scroll">
+        <section class="upload" role="button" tabindex="0" @click="fileInput.click()" @keydown.enter="fileInput.click()" @keydown.space.prevent="fileInput.click()" @dragover.prevent @drop.prevent.stop="drop"><span class="uploadicon">↥</span><strong>{{t('Загрузить фото или видео')}}</strong><small>{{t('или перетащите его на холст')}}</small><em>{{t('Фото до 20 МБ · MP4 / WebM до 250 МБ')}}</em></section>
+        <input ref="fileInput" type="file" accept="image/*,video/*,.mp4,.webm,.mov,.m4v,.ogv" hidden @change="upload($event.target.files[0]); $event.target.value=''">
+        <p v-if="error" class="error" role="alert">{{t(error)}}</p><p v-if="notice" class="notice" role="status">{{t(notice)}}</p>
+        <div class="sectiontitle"><span>01</span>{{t('СИМВОЛЫ')}}</div>
+        <div class="detail-heading"><label for="columns">{{t('Детализация')}}</label><div class="detail-stepper"><input class="detail-number" :aria-label="t('Детализация числом')" type="number" min="40" max="1000" step="1" :value="detailDraft" @input="updateDetail($event.target.value)" @blur="commitDetail" @keydown.enter="commitDetail"><div class="stepper-controls"><button type="button" :aria-label="t('Увеличить детализацию')" :title="t('Увеличить детализацию')" :disabled="settings.columns>=1000" @click="stepDetail($event.shiftKey?10:1)"><svg aria-hidden="true" width="9" height="6" viewBox="0 0 9 6"><path d="M1 4.5 4.5 1 8 4.5"/></svg></button><button type="button" :aria-label="t('Уменьшить детализацию')" :title="t('Уменьшить детализацию')" :disabled="settings.columns<=40" @click="stepDetail($event.shiftKey?-10:-1)"><svg aria-hidden="true" width="9" height="6" viewBox="0 0 9 6"><path d="m1 1.5 3.5 3.5L8 1.5"/></svg></button></div></div></div><input id="columns" v-model.number="settings.columns" type="range" min="40" max="1000"><div class="rangeends"><span>40 · {{t('Крупнее')}}</span><span>1000 · {{t('Детальнее')}}</span></div>
+        <label for="charset">{{t('Набор символов')}}</label><select id="charset" v-model="settings.charset"><option v-for="set in charsets" :key="set.id" :value="set.id">{{t(set.name)}}</option><option value="custom">{{t('Свой набор')}}</option></select>
+        <input v-if="settings.charset==='custom'" id="custom" v-model="settings.custom" maxlength="256" :aria-label="t('Свои символы')"><div class="hint">{{t('От тёмного к светлому')}}</div>
+        <div class="sectiontitle"><span>02</span>{{t('ЦВЕТ')}}</div>
+        <label>{{t('Цветовая палитра')}}<span>{{t(palettes[paletteIndex].name)}}</span></label><div class="palettes"><button v-for="(palette,i) in palettes" :key="palette.name" class="swatch" :class="{active:paletteIndex===i}" :aria-label="t(palette.name)" :aria-pressed="paletteIndex===i" :title="t(palette.name)" @click="selectPalette(i)"><span v-for="color in [palette.bg,...palette.colors]" :key="color" :style="{background:color}"></span></button></div>
+        <div class="colorrow"><label>{{t('Цвет символов')}}<input v-model="foreground" type="color" @input="colorMode='mono'"></label><label>{{t('Цвет фона')}}<input v-model="background" type="color"></label></div>
+        <label for="colorMode">{{t('Режим цвета')}}</label><select id="colorMode" v-model="colorMode"><option value="palette">{{t('Градиент палитры')}}</option><option value="mono">{{t('Один цвет')}}</option><option value="original">{{t('Оригинальные цвета')}}</option></select><label class="check"><span>{{t('Инверсия символов')}}</span><input v-model="settings.invert" type="checkbox"></label>
+        <div class="sectiontitle"><span>03</span>{{t('КОРРЕКЦИЯ')}}</div>
+        <template v-for="control in controls" :key="control.key"><label :for="control.key">{{t(control.name)}} <output>{{number(settings[control.key])}}</output></label><input :id="control.key" v-model.number="settings[control.key]" type="range" :min="control.min" :max="control.max" :step="control.step"></template>
+        <div class="transform"><button @click="settings.rotation=(settings.rotation+90)%360">{{'↻ ' + t('Повернуть')}}</button><button :aria-pressed="settings.mirror" @click="settings.mirror=!settings.mirror">{{'↔ ' + t('Отразить')}}</button></div>
+        <div class="sectiontitle"><span>04</span>{{t('НАБОРЫ НАСТРОЕК')}}</div><button class="reset-preset" @click="resetPreset">↺ {{t('Сбросить текущий набор')}}</button>
+        <label for="presets">{{t('Подключить набор')}}</label><select id="presets" v-model="selectedPreset" @change="applySelected"><option value="">{{t('Выберите набор')}}</option><optgroup :label="t('Готовые коррекции')"><option v-for="(preset,i) in builtinPresets" :key="i" :value="'builtin:'+i">{{t(preset.name)}}</option></optgroup><optgroup v-if="savedPresets.length" :label="t('Мои сохранения')"><option v-for="preset in savedPresets" :key="preset.id" :value="'saved:'+preset.id">{{ preset.data.name }}</option></optgroup></select>
+        <label for="preset-name">{{t('Название сохранения')}}</label><input id="preset-name" v-model="presetName" type="text" maxlength="60" :placeholder="t('Мой набор')"><div class="preset-actions"><button @click="savePreset">{{t('Сохранить набор')}}</button><button :disabled="!selectedPreset.startsWith('saved:')" @click="removePreset">{{t('Удалить')}}</button></div>
+        <div class="preset-actions"><button @click="exportPreset">{{t('Скачать JSON')}}</button><button @click="presetInput.click()">{{t('Подключить JSON')}}</button></div><input ref="presetInput" type="file" accept=".json,application/json" hidden @change="importPreset($event.target.files[0]); $event.target.value=''">
+        <p class="hint">{{t('Настройки сохраняются автоматически. Наборы содержат коррекции, цвета и символы; медиафайлы в них не входят.')}}</p>
+<p class="footnote">{{t('Маленькие символы. Большие возможности.')}}</p>
+      </div>
+    </aside>
+  </main>
+
+  <dialog ref="exportDialog" class="appearance-dialog export-dialog" aria-labelledby="export-heading" @click="event=>{if(event.target===exportDialog)exportDialog.close()}">
+    <div class="dialog-heading"><div><h2 id="export-heading">{{t('Экспорт')}}</h2><p>{{t(isVideo?'Сохраните кадр или запишите ASCII-видео.':'Выберите формат и сохраните ASCII-изображение.')}}</p></div><button @click="exportDialog.close()" :aria-label="t('Закрыть')">×</button></div>
+    <p v-if="error" class="error" role="alert">{{t(error)}}</p><p v-if="notice" class="notice" role="status">{{t(notice)}}</p>
+
+        <label for="export-name">{{t('Имя файла')}}</label><input id="export-name" type="text" maxlength="80" v-model="fileName">
+        <div v-if="isVideo" class="video-export"><label for="video-format">{{t('Формат видео')}}</label><select id="video-format" v-model="videoFormat" :disabled="recording"><option v-for="item in videoFormats" :key="item.value" :value="item.value">{{item.label}}</option></select><button v-if="!recording" class="primary wide" :disabled="!canRecord || busy" @click="beginVideoExport">● {{t('Записать ASCII-видео')}}</button><button v-else class="primary wide recording" @click="stopRecording()">■ {{t('Остановить и сохранить')}}</button><p class="hint">{{t(canRecord?'Запись с текущей позиции в реальном времени, без звука. Доступные форматы зависят от браузера.':'Запись видео недоступна в этом браузере; можно сохранить отдельный кадр.')}}</p></div>
+        <label for="export-format">{{t('Формат изображения / кадра')}}</label><select id="export-format" v-model="format"><option v-for="item in imageFormats" :key="item.value" :value="item.value">{{t(item.label)}}</option></select>
+        <template v-if="format==='jpeg'||format==='webp'"><label for="export-quality">{{t('Качество файла')}}<output>{{number(exportQuality)}}%</output></label><input id="export-quality" type="range" min="10" max="100" v-model.number="exportQuality"></template>
+        <button class="primary wide" :disabled="busy || !result || !!error || recording" @click="download">{{t(isVideo?'Сохранить текущий кадр':'Скачать результат')}} ↗</button><button class="textbutton" :disabled="busy || !result || !!error || recording" @click="copy">{{t('Копировать ASCII-текст')}}</button>
+  </dialog>
+</template>

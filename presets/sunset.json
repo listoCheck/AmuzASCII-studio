@@ -1,0 +1,23 @@
+{
+  "app": "AmuzASCII",
+  "version": 1,
+  "name": "Неоновый закат",
+  "settings": {
+    "columns": 160,
+    "charset": "blocks",
+    "custom": " .:-=+*#%@",
+    "brightness": 0,
+    "contrast": 30,
+    "saturation": 135,
+    "gamma": 1,
+    "rotation": 0,
+    "mirror": false,
+    "invert": false
+  },
+  "appearance": {
+    "colorMode": "palette",
+    "foreground": "#ffe4a3",
+    "background": "#201025",
+    "paletteIndex": 7
+  }
+}

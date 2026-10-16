@@ -1,0 +1,14 @@
+.git
+.idea
+.run
+.venv
+**/node_modules
+**/__pycache__
+**/.pytest_cache
+frontend/dist
+*.zip
+*.tar.gz
+*.log
+.env
+.env.*
+!*.example

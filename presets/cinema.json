@@ -1,0 +1,23 @@
+{
+  "app": "AmuzASCII",
+  "version": 1,
+  "name": "Кино / чёрно-белый",
+  "settings": {
+    "columns": 160,
+    "charset": "classic",
+    "custom": " .:-=+*#%@",
+    "brightness": 0,
+    "contrast": 40,
+    "saturation": 0,
+    "gamma": 1.1,
+    "rotation": 0,
+    "mirror": false,
+    "invert": false
+  },
+  "appearance": {
+    "colorMode": "palette",
+    "foreground": "#ffffff",
+    "background": "#101010",
+    "paletteIndex": 12
+  }
+}
