@@ -157,6 +157,8 @@ Settings and presets are stored in `localStorage`; media files are not part of p
 
 ## Development
 
+For AI-assisted development, start with [AGENTS.md](AGENTS.md): a code map, rendering invariants, and verification commands.
+
 Run the Python backend, then start Vite in a second terminal:
 
 ```bash
