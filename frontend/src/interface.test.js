@@ -53,7 +53,16 @@ test('colored HTML export escapes characters and title and declares its language
   assert.ok(html.includes('lang="en"'));assert.ok(html.includes('&lt;script&gt;'));assert.ok(!html.includes('<script>'))
   assert.ok(html.includes('&amp;'));assert.ok(html.includes('color:#aabbcc'));assert.ok(html.includes('background:#001122'))
 })
-import {svgPreview} from './svgPreview.js'
+import {svgPreview,canUseVectorPreview} from './svgPreview.js'
+
+test('dense LIVE previews are not replaced by aliased SVG text after slider release',()=>{
+  const dense={columns:1000,rows:500,width:1077,height:1077,displayWidth:1077,displayHeight:1077}
+  assert.equal(canUseVectorPreview(dense),false)
+  assert.equal(canUseVectorPreview({...dense,width:4308,height:4308,displayWidth:4308,displayHeight:4308}),true)
+  assert.equal(canUseVectorPreview({...dense,width:4308,height:4308}),false)
+  assert.equal(canUseVectorPreview({...dense,width:2200,height:2200,displayWidth:4308,displayHeight:4308}),true)
+  assert.equal(canUseVectorPreview({columns:40,rows:24,width:400,height:480,displayWidth:400,displayHeight:480}),true)
+})
 import {clipboardImage} from './clipboard.js'
 
 test('clipboard extracts image files, ignores text/HTML and supports file-only clipboard data',()=>{

@@ -1,5 +1,13 @@
 const escape=value=>String(value).replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&apos;'}[c]))
 
+// SVG text is sharp when letters are resolvable, but its unfiltered subpixel
+// strokes alias on dense grids. Keep the area-filtered LIVE frame in that case.
+export function canUseVectorPreview(geo){
+  const width=geo.displayWidth??geo.width
+  const height=geo.displayHeight??geo.height
+  return width/geo.columns>=4&&height/geo.rows>=6
+}
+
 // One text element per row, rather than one DOM node per colored character.
 // Only the colors are a raster image; every glyph edge remains SVG text.
 export function svgPreview(data,layout,colorImage,background){

@@ -15,7 +15,7 @@ async function beginVideoExport(){await startRecording();if(recording.value)expo
 </script>
 
 <template>
-  <header><a class="brand" href="/"><img class="brandicon" src="/assets/favicon.svg" alt="">AmuzASCII<span>ASCII STUDIO</span></a><div class="tag">{{t('ИЗ ПИКСЕЛЕЙ В СИМВОЛЫ.')}}</div><AppearancePanel/><button class="primary" :disabled="busy || !result || (!!error && !recording)" @click="openExport">{{recording?'●':'↗'}} {{t('Экспорт')}}</button></header>
+  <header><a class="brand" href="/"><img class="brandicon" src="/assets/favicon.svg" alt="">AmuzASCII<span>ASCII ART</span></a><div class="tag">{{t('ИЗ ПИКСЕЛЕЙ В СИМВОЛЫ.')}}</div><AppearancePanel/><button class="primary" :disabled="busy || !result || (!!error && !recording)" @click="openExport">{{recording?'●':'↗'}} {{t('Экспорт')}}</button></header>
   <main>
     <aside class="rail"><button class="selected" :title="t('Редактор')">⌘</button><button :title="t('Загрузить изображение или видео')" @click="fileInput.click()">↥</button><div class="railbottom">V.01</div></aside>
     <section class="workspace">
@@ -44,14 +44,16 @@ async function beginVideoExport(){await startRecording();if(recording.value)expo
         <label>{{t('Цветовая палитра')}}<span>{{t(palettes[paletteIndex].name)}}</span></label><div class="palettes"><button v-for="(palette,i) in palettes" :key="palette.name" class="swatch" :class="{active:paletteIndex===i}" :aria-label="t(palette.name)" :aria-pressed="paletteIndex===i" :title="t(palette.name)" @click="selectPalette(i)"><span v-for="color in [palette.bg,...palette.colors]" :key="color" :style="{background:color}"></span></button></div>
         <div class="colorrow"><label>{{t('Цвет символов')}}<input v-model="foreground" type="color" @input="colorMode='mono'"></label><label>{{t('Цвет фона')}}<input v-model="background" type="color"></label></div>
         <label for="colorMode">{{t('Режим цвета')}}</label><select id="colorMode" v-model="colorMode"><option value="palette">{{t('Градиент палитры')}}</option><option value="mono">{{t('Один цвет')}}</option><option value="original">{{t('Оригинальные цвета')}}</option></select><label class="check"><span>{{t('Инверсия символов')}}</span><input v-model="settings.invert" type="checkbox"></label>
-        <div class="sectiontitle"><span>03</span>{{t('КОРРЕКЦИЯ')}}</div>
+        <details class="settings-section"><summary class="sectiontitle"><span>03</span>{{t('КОРРЕКЦИЯ')}}</summary><div class="sectionbody">
         <template v-for="control in controls" :key="control.key"><label :for="control.key">{{t(control.name)}} <output>{{number(settings[control.key])}}</output></label><input :id="control.key" v-model.number="settings[control.key]" type="range" :min="control.min" :max="control.max" :step="control.step"></template>
         <div class="transform"><button @click="settings.rotation=(settings.rotation+90)%360">{{'↻ ' + t('Повернуть')}}</button><button :aria-pressed="settings.mirror" @click="settings.mirror=!settings.mirror">{{'↔ ' + t('Отразить')}}</button></div>
-        <div class="sectiontitle"><span>04</span>{{t('НАБОРЫ НАСТРОЕК')}}</div><button class="reset-preset" @click="resetPreset">↺ {{t('Сбросить текущий набор')}}</button>
+        </div></details>
+        <details class="settings-section"><summary class="sectiontitle"><span>04</span>{{t('НАБОРЫ НАСТРОЕК')}}</summary><div class="sectionbody"><button class="reset-preset" @click="resetPreset">↺ {{t('Сбросить текущий набор')}}</button>
         <label for="presets">{{t('Подключить набор')}}</label><select id="presets" v-model="selectedPreset" @change="applySelected"><option value="">{{t('Выберите набор')}}</option><optgroup :label="t('Готовые коррекции')"><option v-for="(preset,i) in builtinPresets" :key="i" :value="'builtin:'+i">{{t(preset.name)}}</option></optgroup><optgroup v-if="savedPresets.length" :label="t('Мои сохранения')"><option v-for="preset in savedPresets" :key="preset.id" :value="'saved:'+preset.id">{{ preset.data.name }}</option></optgroup></select>
         <label for="preset-name">{{t('Название сохранения')}}</label><input id="preset-name" v-model="presetName" type="text" maxlength="60" :placeholder="t('Мой набор')"><div class="preset-actions"><button @click="savePreset">{{t('Сохранить набор')}}</button><button :disabled="!selectedPreset.startsWith('saved:')" @click="removePreset">{{t('Удалить')}}</button></div>
         <div class="preset-actions"><button @click="exportPreset">{{t('Скачать JSON')}}</button><button @click="presetInput.click()">{{t('Подключить JSON')}}</button></div><input ref="presetInput" type="file" accept=".json,application/json" hidden @change="importPreset($event.target.files[0]); $event.target.value=''">
         <p class="hint">{{t('Настройки сохраняются автоматически. Наборы содержат коррекции, цвета и символы; медиафайлы в них не входят.')}}</p>
+        </div></details>
 <p class="footnote">{{t('Маленькие символы. Большие возможности.')}}</p>
       </div>
     </aside>

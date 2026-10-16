@@ -7,6 +7,7 @@ import {preferences} from './preferences.js'
 import {safeFilename,supportedVideoFormats,htmlExport} from './export.js'
 import {inkLayout,brighterInk} from './typography.js'
 import {clipboardImage} from './clipboard.js'
+import {canUseVectorPreview} from './svgPreview.js'
 
 export default function useEditor() {
   const defaults=defaultSettings
@@ -35,12 +36,12 @@ export default function useEditor() {
     vectorSrc.value='';vectorPendingUrl=''
   }
   function showVector(data){
-    if(data.id!==previewId||showOriginal.value||isVideo.value)return
+    if(data.id!==previewId||showOriginal.value||isVideo.value||!canUseVectorPreview(previewGeometryNow()))return
     if(vectorPendingUrl)URL.revokeObjectURL(vectorPendingUrl)
     const url=URL.createObjectURL(new Blob([data.svg],{type:'image/svg+xml'})),ready=new Image()
     vectorPendingUrl=url
     ready.onload=()=>{
-      if(!disposed&&data.id===previewId&&vectorPendingUrl===url){
+      if(!disposed&&data.id===previewId&&vectorPendingUrl===url&&canUseVectorPreview(previewGeometryNow())){
         if(vectorSrc.value)URL.revokeObjectURL(vectorSrc.value)
         vectorSrc.value=url;vectorPendingUrl='';fit()
       }else URL.revokeObjectURL(url)
@@ -77,6 +78,7 @@ export default function useEditor() {
   function drawPreview(vector=false){
     if(!image||!art.value||video?.seeking)return
     if(vector&&(isVideo.value||showOriginal.value||workerDisabled))return
+    if(vector&&!canUseVectorPreview(previewGeometryNow()))return
     if(settings.charset==='custom'&&(!settings.custom||Array.from(settings.custom).some(c=>c.codePointAt(0)<32))){
       cancelPreview();renderFailed=true;error.value='Введите хотя бы один печатный символ.';return
     }
@@ -274,7 +276,7 @@ export default function useEditor() {
   watch(settings,schedule,{flush:'sync'})
   watch([foreground,background,colorMode,showOriginal,paletteIndex],schedule,{flush:'sync'})
   function resizePreview(){
-    if(vectorSrc.value&&!isVideo.value&&!showOriginal.value)fit()
+    if(vectorSrc.value&&!isVideo.value&&!showOriginal.value&&canUseVectorPreview(previewGeometryNow()))fit()
     else schedule()
   }
   watch(zoom,resizePreview)

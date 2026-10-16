@@ -1,5 +1,6 @@
 import {convertPixels,geometry,palettes,paletteLut,cellColor} from '../src/ascii.js'
 import {inkLayout,brighterInk} from '../src/typography.js'
+import {canUseVectorPreview} from '../src/svgPreview.js'
 const worker=new Worker(new URL('../src/preview.worker.js',import.meta.url),{type:'module'})
 const report=document.querySelector('#report'),messages=[]
 let id=0
@@ -121,6 +122,10 @@ try{
     }
   }finally{URL.revokeObjectURL(spacedUrl)}
   messages.push('PASS: SVG preserves leading spaces and exact character column positions.')
+  const denseGeo={...geometry(1000,16,9,4096,1077),displayWidth:1077,displayHeight:606}
+  if(canUseVectorPreview(denseGeo))throw new Error('Dense LIVE image would be replaced after slider release')
+  if(!canUseVectorPreview({...denseGeo,width:4308,height:2424,displayWidth:4308,displayHeight:2424}))throw new Error('Readable zoomed characters lost vector rendering')
+  messages.push('PASS: dense grids keep the filtered LIVE frame after settling; readable zooms retain SVG.')
   report.textContent=messages.join('\n')
 }catch(e){report.textContent=messages.join('\n')+'\nFAIL: '+e.message}
 finally{worker.terminate()}
