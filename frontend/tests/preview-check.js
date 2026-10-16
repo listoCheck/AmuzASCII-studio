@@ -126,6 +126,40 @@ try{
   if(canUseVectorPreview(denseGeo))throw new Error('Dense LIVE image would be replaced after slider release')
   if(!canUseVectorPreview({...denseGeo,width:4308,height:2424,displayWidth:4308,displayHeight:2424}))throw new Error('Readable zoomed characters lost vector rendering')
   messages.push('PASS: dense grids keep the filtered LIVE frame after settling; readable zooms retain SVG.')
+  const medium={columns:200,rows:56,width:1077,height:603,displayWidth:1077,displayHeight:603}
+  // Compare actual glyph coverage, not only speed or selected renderer.
+  // Exercise fractional cell positions and a second size to catch stale atlases.
+  for(const width of [1077,1200]){
+    const qualityGeo={...medium,width,height:Math.round(width*603/1077)}
+    const images=[]
+    for(const playing of [false,true]){
+      const frame=await render({sourceVersion:8000,bitmap:await createImageBitmap(flat),playing,mediaTime:0,geo:qualityGeo,
+        settings:{...defaults,columns:200,custom:'M',inkBrightness:100},colorMode:'mono',foreground:'#ffffff',background:'#000000',colors:palettes[0].colors})
+      const plane=new OffscreenCanvas(qualityGeo.width,qualityGeo.height),c=plane.getContext('2d')
+      c.drawImage(frame.bitmap,0,0);frame.bitmap.close();images.push(c.getImageData(0,0,plane.width,plane.height).data)
+      const image=document.createElement('canvas');image.width=plane.width;image.height=plane.height
+      image.getContext('2d').drawImage(plane,0,0);image.style.width='520px';document.body.append(image)
+    }
+    let error=0,inkA=0,inkB=0
+    for(let i=0;i<images[0].length;i+=4){error+=Math.abs(images[0][i]-images[1][i]);inkA+=images[0][i];inkB+=images[1][i]}
+    const mae=error/(images[0].length/4),coverage=inkB/inkA
+    if(mae>8||Math.abs(coverage-1)>.02)throw new Error(`Live glyphs diverged from native contours: MAE ${mae.toFixed(2)}, ink ${coverage.toFixed(3)}`)
+    messages.push(`PASS: native/live glyph coverage at ${width}px: mean error ${mae.toFixed(2)}/255, ink ratio ${coverage.toFixed(3)}.`)
+  }
+  const timings={}
+  for(const playing of [false,true]){
+    const samples=[]
+    for(let n=0;n<9;n++){
+      const bitmap=await createImageBitmap(input),start=performance.now()
+      const frame=await render({sourceVersion:7000+n,bitmap,playing,mediaTime:n/30,geo:medium,
+        settings:{...defaults,columns:200,custom:' .:-=+*#%@',inkBrightness:120},colorMode:'original',foreground:'#fff',background:'#000',colors:palettes[0].colors})
+      if(frame.renderer!==(playing?'gpu':'font-outlines'))throw new Error('Medium video selected the slow renderer')
+      if(frame.bitmap.width!==medium.width||frame.bitmap.height!==medium.height)throw new Error('Video output resolution changed')
+      frame.bitmap.close();if(n)samples.push(performance.now()-start)
+    }
+    timings[playing?'playing':'paused']=samples.sort((a,b)=>a-b)[4].toFixed(1)
+  }
+  messages.push(`PASS: 200×56 cells preserved; median worker round trip paused ${timings.paused} ms, playing ${timings.playing} ms.`)
   report.textContent=messages.join('\n')
 }catch(e){report.textContent=messages.join('\n')+'\nFAIL: '+e.message}
 finally{worker.terminate()}

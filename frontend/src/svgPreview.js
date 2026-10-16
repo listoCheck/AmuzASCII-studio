@@ -8,6 +8,14 @@ export function canUseVectorPreview(geo){
   return width/geo.columns>=4&&height/geo.rows>=6
 }
 
+// Native per-character outlines are excellent for stills and large letters.
+// For playing video, thousands of individual text/color calls exceed a frame
+// budget; the GPU caches native-size font coverage, including subpixel phases.
+export function useFontOutlinePreview(geo,playing=false){
+  const count=geo.columns*geo.rows
+  return count<=(playing?2000:40000)&&geo.width/geo.columns>=3
+}
+
 // One text element per row, rather than one DOM node per colored character.
 // Only the colors are a raster image; every glyph edge remains SVG text.
 export function svgPreview(data,layout,colorImage,background){

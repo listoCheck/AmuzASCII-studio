@@ -1,6 +1,6 @@
 import {charsets, paletteLut, convertPixels, cellColor} from './ascii.js'
 import {inkLayout,brighterInk} from './typography.js'
-import {svgPreview} from './svgPreview.js'
+import {svgPreview,useFontOutlinePreview} from './svgPreview.js'
 
 // The GPU draws the complete grid in one pass. No per-cell canvas calls or
 // hundreds of thousands of strings cross the UI thread on every adjustment.
@@ -85,30 +85,53 @@ function init(){
     precision highp float;
     uniform highp sampler2D sourcePixels, corrections, palette;
     uniform highp sampler2DArray glyphs;
-    uniform vec2 resolution, grid, pixelFootprint;
+    uniform vec2 resolution, grid, pixelFootprint, nativeTile;
+    uniform int nativeGlyphs;
     uniform float saturation, rampLength, inkGain;
     uniform int invert, mode;
     uniform vec3 foreground, background;
     out vec4 outputColor;
     float corrected(float v){return texelFetch(corrections,ivec2(int(floor(clamp(v,0.,255.)+.5)),0),0).r*255.;}
-    void main(){
-      vec2 uv=vec2(gl_FragCoord.x/resolution.x,1.-gl_FragCoord.y/resolution.y);
-      vec2 position=uv*grid;ivec2 cell=ivec2(min(floor(position),grid-1.));
+    vec3 cellInk(ivec2 cell,out float index){
       vec4 pixel=texelFetch(sourcePixels,cell,0);vec3 rgb=pixel.rgb*pixel.a*255.;
       float l=dot(rgb,vec3(.2126,.7152,.0722));rgb=vec3(l)+(rgb-vec3(l))*saturation;
       rgb=vec3(corrected(rgb.r),corrected(rgb.g),corrected(rgb.b));
       float light=dot(rgb,vec3(.2126,.7152,.0722));
       float level=invert==1?255.-light:light;
-      float index=min(rampLength-1.,floor(level/256.*rampLength));
-      // Each glyph owns an isolated mip chain. Explicit derivatives describe
-      // the cell footprint, never the discontinuous character/layer indices.
-      // This averages subpixel strokes instead of producing moire scanlines.
-      float mask=textureGrad(glyphs,vec3(fract(position),index),
-        vec2(pixelFootprint.x,0.),vec2(0.,-pixelFootprint.y)).a;
+      index=min(rampLength-1.,floor(level/256.*rampLength));
       vec3 color=mode==0?foreground:mode==1?rgb/255.:
         texelFetch(palette,ivec2(min(31.,floor(floor(light+.5)/8.)),0),0).rgb;
-      color=min(vec3(1.),color*inkGain);
-      outputColor=vec4(mix(background,color,mask),1.);
+      return min(vec3(1.),color*inkGain);
+    }
+    void main(){
+      vec2 uv=vec2(gl_FragCoord.x/resolution.x,1.-gl_FragCoord.y/resolution.y);
+      vec2 position=uv*grid;ivec2 cell=ivec2(min(floor(position),grid-1.));
+      if(nativeGlyphs==1){
+        vec3 color=background;
+        vec2 pixel=vec2(gl_FragCoord.x-.5,resolution.y-gl_FragCoord.y-.5);
+        // Font hinting/antialiasing can touch the neighboring cell. Composite
+        // in the same row/column order as native fillText instead of clipping.
+        for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++){
+          ivec2 neighbor=cell+ivec2(x,y);
+          if(any(lessThan(neighbor,ivec2(0)))||any(greaterThanEqual(neighbor,ivec2(grid))))continue;
+          vec2 origin=vec2(neighbor)*resolution/grid;
+          vec2 phase=floor(fract(origin)*8.+.5);
+          vec2 base=floor(origin)+floor(phase/8.);
+          phase=mod(phase,8.);
+          vec2 local=pixel-base+1.;
+          if(any(lessThan(local,vec2(0.)))||any(greaterThanEqual(local,nativeTile)))continue;
+          float index;vec3 ink=cellInk(neighbor,index);
+          float mask=texelFetch(glyphs,ivec3(ivec2(phase*nativeTile+local),int(index)),0).a;
+          color=mix(color,ink,mask);
+        }
+        outputColor=vec4(color,1.);
+      }else{
+        float index;vec3 color=cellInk(cell,index);
+        // Independent mip chains integrate subpixel strokes on dense grids.
+        float mask=textureGrad(glyphs,vec3(fract(position),index),
+          vec2(pixelFootprint.x,0.),vec2(0.,-pixelFootprint.y)).a;
+        outputColor=vec4(mix(background,color,mask),1.);
+      }
     }`))
   gl.linkProgram(program)
   if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(program))
@@ -148,7 +171,7 @@ self.onmessage=async({data:job})=>{
       self.postMessage({id:job.id,geo,svg,renderer:'svg',elapsed:performance.now()-start})
       return
     }
-    if(geo.columns*geo.rows<=40000&&geo.width/geo.columns>=3){
+    if(useFontOutlinePreview(geo,job.playing)){
       bitmap=renderFontOutlines(job)
       self.postMessage({id:job.id,geo,bitmap,renderer:'font-outlines',elapsed:performance.now()-start},[bitmap]);bitmap=null
       return
@@ -164,26 +187,37 @@ self.onmessage=async({data:job})=>{
       uploadCanvas(0,sample);sampleKey=key
     }
     // Supersample dense grids before downscaling, retaining every selected cell.
-    const scale=Math.min(4096/geo.width,4096/geo.height,Math.sqrt(8e6/(geo.width*geo.height)),Math.max(1,geo.columns*2/geo.width))
+    const nativeGlyphs=useFontOutlinePreview(geo,false)
+    const scale=nativeGlyphs?1:Math.min(4096/geo.width,4096/geo.height,Math.sqrt(8e6/(geo.width*geo.height)),Math.max(1,geo.columns*2/geo.width))
     const width=Math.max(1,Math.round(geo.width*scale)),height=Math.max(1,Math.round(geo.height*scale))
     if(surface.width!==width)surface.width=width
     if(surface.height!==height)surface.height=height
     // Power-of-two tiles give every layer a complete, independent mip pyramid.
-    const tw=2**Math.ceil(Math.log2(Math.max(32,surface.width/geo.columns)))
-    const th=2**Math.ceil(Math.log2(Math.max(64,surface.height/geo.rows)))
-    const nextAtlas=JSON.stringify([chars,tw,th])
+    const tileWidth=Math.ceil(geo.width/geo.columns)+2,tileHeight=Math.ceil(geo.height/geo.rows)+2
+    const tw=nativeGlyphs?tileWidth*8:2**Math.ceil(Math.log2(Math.max(32,surface.width/geo.columns)))
+    const th=nativeGlyphs?tileHeight*8:2**Math.ceil(Math.log2(Math.max(64,surface.height/geo.rows)))
+    const nextAtlas=JSON.stringify([chars,tw,th,nativeGlyphs, nativeGlyphs?geo.width/geo.columns:0,nativeGlyphs?geo.height/geo.rows:0])
     if(nextAtlas!==atlasKey){
       if(ramp.length>gl.getParameter(gl.MAX_ARRAY_TEXTURE_LAYERS))throw new Error('Glyph layer limit exceeded')
       glyphTile.width=tw;glyphTile.height=th
-      const a=glyphTile.getContext('2d'),layout=inkLayout(a,chars,th)
+      const a=glyphTile.getContext('2d'),layout=inkLayout(a,chars,nativeGlyphs?geo.height/geo.rows:th)
       a.font=layout.font;a.textAlign='center';a.textBaseline='alphabetic';a.fillStyle='#fff'
       gl.activeTexture(gl.TEXTURE1)
       gl.texImage3D(gl.TEXTURE_2D_ARRAY,0,gl.RGBA8,tw,th,ramp.length,0,gl.RGBA,gl.UNSIGNED_BYTE,null)
       ramp.forEach((ch,i)=>{
-        a.clearRect(0,0,tw,th);a.fillText(ch,tw/2,layout.baseline,tw)
+        a.clearRect(0,0,tw,th)
+        if(nativeGlyphs){
+          for(let py=0;py<8;py++)for(let px=0;px<8;px++){
+            a.save();a.beginPath();a.rect(px*tileWidth,py*tileHeight,tileWidth,tileHeight);a.clip()
+            a.fillText(ch,px*tileWidth+1+px/8+geo.width/geo.columns/2,py*tileHeight+1+py/8+layout.baseline,geo.width/geo.columns)
+            a.restore()
+          }
+        }else a.fillText(ch,tw/2,layout.baseline,tw)
         gl.texSubImage3D(gl.TEXTURE_2D_ARRAY,0,0,0,i,tw,th,1,gl.RGBA,gl.UNSIGNED_BYTE,glyphTile)
       })
-      gl.generateMipmap(gl.TEXTURE_2D_ARRAY);atlasKey=nextAtlas
+      if(!nativeGlyphs)gl.generateMipmap(gl.TEXTURE_2D_ARRAY)
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY,gl.TEXTURE_MIN_FILTER,nativeGlyphs?gl.NEAREST:gl.LINEAR_MIPMAP_LINEAR)
+      atlasKey=nextAtlas
     }
     const lut=new Uint8Array(256*4),contrast=s.contrast*2.55,factor=259*(contrast+255)/(255*(259-contrast))
     for(let i=0;i<256;i++){const v=Math.round(255*(Math.max(0,Math.min(255,factor*(i-128)+128+s.brightness*2.55))/255)**(1/s.gamma));lut.set([v,v,v,255],i*4)}
@@ -192,6 +226,7 @@ self.onmessage=async({data:job})=>{
     paletteLut(job.colors,s.saturation).forEach((c,i)=>tones.set([...c.match(/\d+/g).map(Number),255],i*4))
     upload(3,32,1,tones)
     gl.viewport(0,0,surface.width,surface.height)
+    uniform('nativeGlyphs','uniform1i',nativeGlyphs?1:0);uniform('nativeTile','uniform2f',tileWidth,tileHeight)
     uniform('resolution','uniform2f',surface.width,surface.height);uniform('grid','uniform2f',geo.columns,geo.rows)
     const visibleWidth=Math.min(geo.width,geo.displayWidth||geo.width),visibleHeight=Math.min(geo.height,geo.displayHeight||geo.height)
     // Below two pixels per character, blend toward integrated glyph coverage.
