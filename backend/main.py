@@ -8,27 +8,13 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageDraw, ImageEnhance, ImageOps, UnidentifiedImageError
+from backend.videos import router as videos_router
 
 app = FastAPI(title="AmuzASCII", version="1.0.0")
+app.include_router(videos_router)
 Image.MAX_IMAGE_PIXELS = 25_000_000
 MAX_UPLOAD = 20 * 1024 * 1024
-SETS = {
-    "classic": " .,:;irsXA253hMHGS#9B&@",
-    "blocks": " ░▒▓█",
-    "matrix": " 01",
-    "minimal": " .:+#",
-    "letters": " .itfrnuvczxYUJCLQOZmwqpdbkhao*#MW&8%B@$",
-    "binary": " .01#",
-    "dots": " ·∙•●",
-    "braille": " ⠁⠃⠇⠏⠟⠿⡿⣿",
-    "lines": " .─═┼╬╋",
-    "geometry": " ·◦◇○△□◆■●",
-    "digits": " .1730254689",
-    "code": " .,:;!|/<>+={}#@",
-    "stars": " .·+✧✦★",
-    "dense": " .`^\",:;Il!i~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$",
-}
-
+from backend.characters import SETS
 
 def demo_image() -> Image.Image:
     image = Image.new("RGB", (700, 850), "#080d08")

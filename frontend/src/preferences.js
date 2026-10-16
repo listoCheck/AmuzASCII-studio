@@ -14,12 +14,13 @@ export const themes=[
   {id:'neon-circuit',name:'Неоновый контур',colors:['#061b24','#77ff96','#ff7cdb'],accent:'#45f5c5'},
   {id:'cyberpunk',name:'Cyberpunk',colors:['#11101a','#262034','#fff2b4'],accent:'#f8e51b'},
 ]
-export const preferenceDefaults={locale:'ru',theme:'paper',accent:'#62734a',density:'comfortable',fontScale:100,panelWidth:340,radius:8,grid:false,imageFormat:'png',exportQuality:92,fileName:'AmuzASCII',videoFormat:'webm-vp9'}
+export const preferenceDefaults={locale:'ru',theme:'paper',accent:'#62734a',density:'comfortable',fontScale:100,panelWidth:340,radius:8,grid:false,imageFormat:'png',exportQuality:92,fileName:'AmuzASCII',videoFormat:'mp4'}
 const locales=['ru','en'],formats=['png','jpeg','webp','svg','txt','html']
 export function sanitizePreferences(input={}){
   if(!input||typeof input!=='object')input={}
   const clean={...preferenceDefaults}
-  for(const [key,allowed] of [['locale',locales],['theme',themes.map(t=>t.id)],['density',['comfortable','compact']],['imageFormat',formats],['videoFormat',['webm-vp9','webm-vp8','webm','mp4']]])if(allowed.includes(input[key]))clean[key]=input[key]
+  if(['webm-vp9','webm-vp8'].includes(input.videoFormat))clean.videoFormat='webm'
+  for(const [key,allowed] of [['locale',locales],['theme',themes.map(t=>t.id)],['density',['comfortable','compact']],['imageFormat',formats],['videoFormat',['webm','mp4']]])if(allowed.includes(input[key]))clean[key]=input[key]
   for(const [key,min,max] of [['fontScale',90,120],['panelWidth',280,440],['radius',0,18],['exportQuality',10,100]])if(typeof input[key]==='number'&&Number.isFinite(input[key]))clean[key]=Math.max(min,Math.min(max,Math.round(input[key])))
   if(typeof input.accent==='string'&&/^#[0-9a-f]{6}$/i.test(input.accent))clean.accent=input.accent
   if(typeof input.grid==='boolean')clean.grid=input.grid

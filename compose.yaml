@@ -10,6 +10,8 @@ services:
     init: true
     restart: unless-stopped
     read_only: true
+    volumes:
+      - video-data:/data
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m
     cap_drop:
@@ -21,3 +23,6 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+volumes:
+  video-data:

@@ -13,7 +13,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 COPY requirements.txt ./
 RUN python -m pip install --no-cache-dir -r requirements.txt \
-    && useradd --system --uid 10001 --create-home app
+    && apt-get update && apt-get install -y --no-install-recommends fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --uid 10001 --create-home app \
+    && mkdir -p /data && chown app:app /data
+ENV AMUZASCII_VIDEO_DIR=/data TMPDIR=/data
 COPY --chown=app:app backend/ ./backend/
 COPY --from=frontend-build --chown=app:app /build/dist/ ./frontend/dist/
 USER app

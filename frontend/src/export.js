@@ -10,13 +10,7 @@ export function safeFilename(value){
   const base=String(value||'').replace(/[<>:"/\\|?*\x00-\x1f]/g,'_').replace(/\.(png|jpe?g|webp|svg|txt|html|webm|mp4)$/i,'').replace(/[.\s]+$/g,'').slice(0,80)
   return !base.trim()||/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(base)?'AmuzASCII':base
 }
-export function supportedVideoFormats(support){
-  const definitions=[{value:'webm-vp9',label:'WebM / VP9',mime:'video/webm;codecs=vp9',extension:'webm'},
-    {value:'webm-vp8',label:'WebM / VP8',mime:'video/webm;codecs=vp8',extension:'webm'},
-    {value:'webm',label:'WebM',mime:'video/webm',extension:'webm'},
-    {value:'mp4',label:'MP4',mime:'video/mp4',extension:'mp4'}]
-  return definitions.filter(format=>support(format.mime))
-}
+export const videoFormats=[{value:'mp4',label:'MP4 / H.264'},{value:'webm',label:'WebM / VP9'}]
 export const escapeHtml=value=>String(value).replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]))
 export function htmlExport(data,colorAt,background,title,language){
   const body=data.lines.map((line,y)=>Array.from(line).map((ch,x)=>`<span style="color:${colorAt(y*data.columns+x)}">${escapeHtml(ch)}</span>`).join('')).join('\n')

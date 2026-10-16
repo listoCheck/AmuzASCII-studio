@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
 import {t,translate,messages} from './i18n.js'
 import {preferences,sanitizePreferences,accentText,themes} from './preferences.js'
-import {imageFormats,safeFilename,supportedVideoFormats,htmlExport} from './export.js'
+import {imageFormats,safeFilename,videoFormats,htmlExport} from './export.js'
 import {charsets,palettes} from './ascii.js'
 import {builtinPresets} from './presets.js'
 
@@ -14,7 +14,7 @@ test('all interface translations and built-in names have English entries',()=>{
   }
   for(const item of [...charsets,...palettes,...themes,...builtinPresets])assert.ok(messages.en[item.name],item.name)
   for(const format of imageFormats)assert.ok(messages.en[format.label],format.label)
-  for(const file of ['useEditor.js','usePresets.js','video.js','ascii.js','presets.js']){
+  for(const file of ['useEditor.js','usePresets.js','ascii.js','presets.js']){
     const source=readFileSync(new URL(file,import.meta.url),'utf8')
     for(const match of source.matchAll(/(?:new Error\(|error.value=|notice.value=)'([^']+)'/g)){
       if(/[А-Яа-яЁё]/.test(match[1]))assert.ok(messages.en[match[1]],`${file}: ${match[1]}`)
@@ -42,11 +42,11 @@ test('file names cannot escape directories or use reserved Windows names',()=>{
   assert.equal(safeFilename('  '),'AmuzASCII')
   assert.equal(safeFilename('Картинка.webp'),'Картинка')
 })
-test('video format chooser includes only codecs actually supported by the browser',()=>{
-  const formats=supportedVideoFormats(mime=>mime==='video/webm;codecs=vp8')
-  assert.equal(formats.length,1);assert.equal(formats[0].extension,'webm');assert.equal(formats[0].value,'webm-vp8')
-  assert.equal(supportedVideoFormats(()=>false).length,0)
-  assert.ok(supportedVideoFormats(mime=>mime==='video/mp4').some(f=>f.extension==='mp4'))
+test('backend video formats work without browser recorders and migrate saved choices',()=>{
+  assert.deepEqual(videoFormats.map(format=>format.value),['mp4','webm'])
+  assert.equal(sanitizePreferences({videoFormat:'webm-vp9'}).videoFormat,'webm')
+  assert.equal(sanitizePreferences({videoFormat:'webm-vp8'}).videoFormat,'webm')
+  assert.equal(sanitizePreferences({videoFormat:'invalid'}).videoFormat,'mp4')
 })
 test('colored HTML export escapes characters and title and declares its language',()=>{
   const html=htmlExport({columns:3,lines:['<&>']},()=>'#aabbcc','#001122','<script>','en')
