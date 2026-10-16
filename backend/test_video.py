@@ -70,6 +70,11 @@ def test_full_video_has_all_frames_duration_and_audio(tmp_path, format):
         job = wait_for_job(client, response.json()["id"])
         assert job["status"] == "completed", job
         assert job["progress"] == 100 and job["result"]["frames"] == 24
+        metrics = job["metrics"]
+        assert metrics["elapsed_seconds"] > 0 and metrics["fps"] > 0
+        assert metrics["eta_seconds"] == 0
+        assert metrics["memory_mb"] is None or metrics["memory_mb"] > 0
+        assert metrics["cpu_percent"] is None or 0 <= metrics["cpu_percent"] <= 100
         downloaded = client.get(f'/api/video-jobs/{job["id"]}/download')
         assert downloaded.status_code == 200
         result = tmp_path / ("result." + format)
@@ -206,3 +211,93 @@ def test_cached_compositing_matches_float_reference(mode):
     if expected.size != renderer.size:
         expected = expected.resize(renderer.size, Image.Resampling.LANCZOS)
     assert np.array_equal(actual, np.asarray(expected))
+
+
+def test_backend_metrics_measure_process_cpu_memory_and_export_rate(monkeypatch):
+    from types import SimpleNamespace
+    from backend.videos import VideoStore
+    monkeypatch.setattr("backend.videos.time.monotonic", lambda: 12)
+    monkeypatch.setattr("backend.videos.time.process_time", lambda: 4)
+    monkeypatch.setattr("backend.videos.os.cpu_count", lambda: 4)
+    monkeypatch.setattr("backend.videos.psutil.Process", lambda: SimpleNamespace(memory_info=lambda: SimpleNamespace(rss=128 * 1048576)))
+    job = {"telemetry": {"started": 2, "sampled": 10, "cpu": 2}, "metrics": {},
+           "frames": 20, "total_frames": 100, "progress": 20}
+    VideoStore.update_metrics(None, job)
+    assert job["metrics"] == {"cpu_percent": 25, "memory_mb": 128,
+                              "elapsed_seconds": 10, "fps": 2, "eta_seconds": 40}
+    VideoStore.update_metrics(None, job, complete=True)
+    assert job["metrics"]["eta_seconds"] == 0
+
+
+def test_parallel_frames_complete_out_of_order_but_export_matches_serial(tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from backend import video_render
+    source = tmp_path / "source.mp4"
+    make_video(source)
+    info = video_info(source)
+    options = VideoOptions(columns=63, colorMode="original")
+    monkeypatch.setattr(video_render.os, "cpu_count", lambda: 4)
+    def serial_pool(**kwargs):
+        return ThreadPoolExecutor(max_workers=1)
+    monkeypatch.setattr(video_render, "ThreadPoolExecutor", serial_pool)
+    serial = tmp_path / "serial.mp4"
+    video_render.transcode(source, serial, options, info, lambda *_: None, threading.Event())
+    monkeypatch.setattr(video_render, "ThreadPoolExecutor", ThreadPoolExecutor)
+    original_render = video_render.AsciiFrames.render
+    later_finished = threading.Event()
+    completion_order = []
+    def out_of_order_render(self, image):
+        first = image.getpixel((0, 0))[0] < 40
+        if first:
+            assert later_finished.wait(2), "Second frame did not render concurrently"
+        result = original_render(self, image)
+        completion_order.append(first)
+        if not first:
+            later_finished.set()
+        return result
+    monkeypatch.setattr(video_render.AsciiFrames, "render", out_of_order_render)
+    parallel = tmp_path / "parallel.mp4"
+    video_render.transcode(source, parallel, options, info, lambda *_: None, threading.Event())
+    assert completion_order[0] is False and True in completion_order
+    with av.open(str(serial)) as left, av.open(str(parallel)) as right:
+        a, b = list(left.decode(video=0)), list(right.decode(video=0))
+        assert len(a) == len(b) == 24
+        for before, after in zip(a, b):
+            assert before.time == after.time
+            assert np.array_equal(before.to_ndarray(format="rgb24"), after.to_ndarray(format="rgb24"))
+    with av.open(str(serial)) as left, av.open(str(parallel)) as right:
+        a, b = list(left.decode(audio=0)), list(right.decode(audio=0))
+        assert len(a) == len(b) and a
+        assert [(f.time, f.samples) for f in a] == [(f.time, f.samples) for f in b]
+
+
+@pytest.mark.parametrize("times", [None, [0, 1, 3, 7, 9]])
+def test_gif_export_keeps_all_frames_timing_and_loops_without_audio(tmp_path, times):
+    import io
+    from PIL import Image
+    source = tmp_path / "source.mp4"
+    make_video(source, times=times)
+    with av.open(str(source)) as original:
+        expected = [float(frame.time) for frame in original.decode(video=0)]
+        expected_duration = original.duration / av.time_base
+    with TestClient(app) as client:
+        imported = client.post("/api/videos", files={"file": (source.name, source.read_bytes(), "video/mp4")}).json()
+        response = client.post(f'/api/videos/{imported["id"]}/jobs', json={"columns": 40, "format": "gif", "colorMode": "original"})
+        assert response.status_code == 202
+        job = wait_for_job(client, response.json()["id"])
+        assert job["status"] == "completed", job
+        assert job["result"]["frames"] == len(expected) and not job["result"]["has_audio"]
+        downloaded = client.get(f'/api/video-jobs/{job["id"]}/download')
+        assert downloaded.headers["content-type"] == "image/gif"
+        assert '.gif' in downloaded.headers['content-disposition']
+        with Image.open(io.BytesIO(downloaded.content)) as gif:
+            assert gif.n_frames == len(expected) and gif.info["loop"] == 0
+            assert gif.size == (160, 90)
+            elapsed, means = 0, []
+            for index, timestamp in enumerate(expected):
+                gif.seek(index)
+                assert abs(elapsed / 1000 - timestamp) <= .011
+                elapsed += gif.info["duration"]
+                means.append(np.asarray(gif.convert("RGB")).mean())
+            assert abs(elapsed / 1000 - expected_duration) <= .03
+            assert means[-1] > means[0]

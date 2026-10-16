@@ -75,7 +75,7 @@ Search for the target symbol with `rg -n` and read a bounded section. Read the p
 - Main header contains identity/tagline, compact metrics, GitHub button, language/appearance controls, and Export. Keep it responsive without overlaps.
 - Use theme variables (`--ink`, `--line`, `--ui-field`, `--ui-accent`, etc.) for new UI. Preserve Cyberpunk's distinct appearance; do not apply neon-only changes globally.
 - Source strings are Russian; `t(...)` resolves English through `locales/en.json`. Add translations for new visible labels, tooltips, notices, and errors. The interface test checks coverage.
-- Metrics are render latency, main-thread long tasks over a 2-second window, and optional JS heap. They are **not CPU/GPU usage**. Show unavailable values as “—”; stop collection for video/unmount. Do not invent unsupported measurements.
+- Metrics are render latency, main-thread long tasks over a 2-second window, and optional JS heap. They are **not CPU/GPU usage**. Show unavailable values as “—”; keep collection active for photos and video preview; stop on unmount. Do not invent unsupported measurements.
 - Preserve existing localStorage keys and version-1 preset compatibility; validate imported JSON through the schema. Avoid resetting saved preferences/presets during unrelated changes.
 
 ## Verification and efficient changes
@@ -86,3 +86,22 @@ Search for the target symbol with `rg -n` and read a bounded section. Read the p
 - Video/backend changes: `pytest backend -q`. `test_video.py` generates real fixtures and verifies full MP4/WebM output, audio, VFR timing, failure cleanup, incomplete-download rejection, Range support, and compositor parity. Benchmark before/after on identical inputs; do not trade quality or completeness for speed without a user request.
 - Docs-only changes need link/path/command checks, not full render/video suites. Keep the two READMEs aligned and use relative screenshot links. Source files are UTF-8.
 - Scale verification to the change; do not add tests that merely assert implementation text or repeatedly run unchanged checks. Report what changed, relevant checks, and concrete limitations briefly.
+
+- During backend video processing, the header switches to job `metrics` from `backend/videos.py`: process CPU normalized across logical CPUs, process RSS, and average export FPS. The dialog shows elapsed/estimated remaining time. Unknown data is null, not fabricated zero; after processing the header returns to browser metrics. Sampling must be nonblocking and must not affect conversion. `psutil` provides RSS.
+
+- Video rendering uses a bounded ThreadPoolExecutor pipeline: two frame renderers on >=4 logical CPUs for frames <=4 MP, otherwise one. Encoding/muxing stays on the main job thread in original order; never submit the full clip at once. At most `workers * 2` video futures and 32 total frame events are queued. Out-of-order render completion must not reorder output; a regression test compares decoded parallel/serial exports.
+
+- The backend header card includes estimated remaining export time only while `videoProcessing` is true. Show unknown ETA as “—”; hide the ETA field after completion/failure along with the server card.
+
+
+- URL imports: `backend/remote.py` owns bounded background downloads, public-address pinning/redirect validation, Fake-IP DoH fallback, cancellation, image responses, and YouTube metadata/remux. `useEditor.loadLink` adopts resulting image blobs/video sources without reuploading videos. API `/api/imports` returns job IDs; polling gives `media`. Never permit private/file URLs, generic webpage scraping, live/playlist imports, or partial files. URL media goes through the server; keep privacy docs accurate.
+- YouTube requires `yt-dlp[default]` plus Node >=22 (Docker copies a glibc Node runtime). PyAV remuxes separate tracks; retain packets with PTS but no DTS (initial reordered frames), not only packets with DTS. `test_remote.py` covers imports, limits, cancellation, address/redirect rejection, fake DNS, and complete-track remux.
+- Fullscreen is a toggle via `document.exitFullscreen()` / frame `requestFullscreen()`. Keep `isFullscreen` synchronized with `fullscreenchange` and clean up the listener. Photo caption and video player buttons must both exit on a second click.
+
+- Default detail is 80 columns (frontend presets/normalization, backend image/video defaults). Preserve explicit saved preset values. GIF is a backend video export format using pal8 adaptive 256-color frames, no audio, looping, centisecond timestamps. Keep every frame; test count/VFR timing/MIME. GIF audio/timing limitations must be visible in export UI and docs.
+
+- Canonicalize shared `youtu.be` URLs before DNS validation (ignore `si`/time/list params for the single full video). Fake-IP DoH uses two resolver addresses and a 60-second cache of verified public IPs. Keep URL syntax, private-address rejection, and DNS connectivity errors distinct.
+
+- URL import progress includes `phase`, `loaded`, `total`, `total_estimated`, `speed_bps`, `elapsed_seconds`, `eta_seconds`. Aggregate YouTube video/audio bytes and update real Content-Length values as tracks start. Distinguish resolving/downloading/preparing; unknown totals/ETA stay null. Switching media only releases browser resources; server files use existing inactivity retention, not immediate deletion.
+
+- Playing video uses the GPU glyph atlas above 2,000 cells; readable grids cache native-size glyph coverage with eight subpixel phases and neighboring-cell compositing, while dense grids use mip filtering. Never apply the dense-grid mip blur to readable video glyphs; per-cell native fillText is reserved for smaller live grids and still/paused previews (up to 40,000 cells). Carry the playing flag into worker jobs; preserve grid resolution and SVG eligibility on pause. Browser preview-check benchmarks the 200-column path.

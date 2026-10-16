@@ -1,6 +1,8 @@
 """Frame-by-frame ASCII conversion with original timestamps and complete audio."""
 import math
 import os
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from fractions import Fraction
 from pathlib import Path
 
@@ -15,7 +17,7 @@ from backend.characters import SETS
 
 class VideoOptions(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
-    columns: int = Field(160, ge=40, le=1000)
+    columns: int = Field(80, ge=40, le=1000)
     charset: str = "classic"
     custom: str = Field(" .:-=+*#%@", min_length=1, max_length=256)
     brightness: float = Field(0, ge=-100, le=100)
@@ -30,7 +32,7 @@ class VideoOptions(BaseModel):
     foreground: str = "#d1e8a0"
     background: str = "#10140f"
     colors: list[str] = Field(default_factory=lambda: ["#273923", "#657943", "#a4bd79", "#d1e8a0"], min_length=2, max_length=16)
-    format: Literal["mp4", "webm"] = "mp4"
+    format: Literal["mp4", "webm", "gif"] = "mp4"
     fileName: str = Field("AmuzASCII", max_length=80)
 
     @field_validator("charset")
@@ -62,7 +64,7 @@ class VideoOptions(BaseModel):
 
 
 def video_info(path, poster_path=None):
-    with av.open(str(path), options={"protocol_whitelist": "file,pipe"}) as source:
+    with av.open(str(path), options={"protocol_whitelist": "file,pipe", "format_whitelist": "mov,matroska,avi,mpeg,mpegts,ogg,asf,flv,h264,hevc,m4v"}) as source:
         if not source.streams.video:
             raise ValueError("В файле нет видеодорожки.")
         stream = source.streams.video[0]
@@ -185,20 +187,20 @@ def transcode(source_path, output_path, options, info, progress, stopping):
     """Decode to EOF, retain every frame's timestamp and flush all encoders."""
     renderer = AsciiFrames(info["width"], info["height"], options)
     processed, last_pts, final_time = 0, -1, 0.0
-    with av.open(str(source_path), options={"protocol_whitelist": "file,pipe"}) as source, av.open(str(output_path), "w", format=options.format) as target:
+    with av.open(str(source_path), options={"protocol_whitelist": "file,pipe", "format_whitelist": "mov,matroska,avi,mpeg,mpegts,ogg,asf,flv,h264,hevc,m4v"}) as source, av.open(str(output_path), "w", format=options.format, options={"loop": "0"} if options.format == "gif" else {}) as target:
         vin = source.streams.video[0]
         vin.codec_context.thread_count = min(4, os.cpu_count() or 1)
         vin.thread_type = "AUTO"
         rate = vin.average_rate or vin.guessed_rate or Fraction(30)
         origin = (source.start_time or 0) / av.time_base
-        video_tb = Fraction(1, 90000)
-        vout = target.add_stream("libx264" if options.format == "mp4" else "libvpx-vp9", rate=rate)
+        video_tb = Fraction(1, 100 if options.format == "gif" else 90000)
+        vout = target.add_stream({"mp4": "libx264", "webm": "libvpx-vp9", "gif": "gif"}[options.format], rate=rate)
         vout.width, vout.height = renderer.size
-        vout.pix_fmt = "yuv420p"
+        vout.pix_fmt = "pal8" if options.format == "gif" else "yuv420p"
         vout.time_base = video_tb
         vout.codec_context.time_base = video_tb
         vout.codec_context.thread_count = min(4, os.cpu_count() or 1)
-        vout.options = {"crf": "18", "preset": "veryfast", "bf": "0"} if options.format == "mp4" else {"crf": "24", "b": "0", "deadline": "good", "cpu-used": "4", "lag-in-frames": "0"}
+        vout.options = {"crf": "18", "preset": "veryfast", "bf": "0"} if options.format == "mp4" else {} if options.format == "gif" else {"crf": "24", "b": "0", "deadline": "good", "cpu-used": "4", "lag-in-frames": "0"}
         durations = {}
         def mux_video(packets):
             for encoded in packets:
@@ -209,38 +211,78 @@ def transcode(source_path, output_path, options, info, progress, stopping):
                     encoded.duration = max(1, round(duration_ticks * video_tb / packet_tb))
                 target.mux(encoded)
         audio = {}
-        for ain in source.streams.audio:
+        audio_inputs = [] if options.format == "gif" else list(source.streams.audio)
+        for ain in audio_inputs:
             aout = target.add_stream("aac" if options.format == "mp4" else "libopus", rate=48000)
             aout.layout = "stereo"
             aout.bit_rate = 192000
             audio[ain.index] = (aout, av.AudioResampler(format="fltp" if options.format == "mp4" else "flt", layout="stereo", rate=48000))
-        for packet in source.demux(vin, *source.streams.audio):
+        # Pillow/NumPy release the GIL. Prepare a small number of frames in
+        # parallel while the main thread decodes and encodes in source order.
+        # Large images stay serial to bound peak memory.
+        workers = 2 if (os.cpu_count() or 1) >= 4 and info["width"] * info["height"] <= 4_000_000 else 1
+        pending, video_pending = deque(), 0
+        def prepare_frame(frame):
             if stopping.is_set():
                 raise RuntimeError("Обработка видео прервана сервером. Неполный файл не сохранён.")
-            for frame in packet.decode():
-                if packet.stream.type == "video":
-                    image = frame.to_image()
-                    if info["rotation"]:
-                        image = image.rotate(info["rotation"], expand=True)
-                    rendered = av.VideoFrame.from_ndarray(renderer.render(image), format="rgb24")
-                    time = float(frame.pts * frame.time_base) - origin if frame.pts is not None else processed / float(rate)
-                    rendered.pts = max(last_pts + 1, round(time / video_tb))
-                    rendered.time_base = video_tb
-                    duration = float(frame.duration * frame.time_base) if frame.duration else 1 / float(rate)
-                    rendered.duration = max(1, round(duration / video_tb))
-                    durations[rendered.pts] = rendered.duration
-                    last_pts = rendered.pts
-                    mux_video(vout.encode(rendered))
-                    processed += 1
-                    final_time = time + duration
-                    progress(processed, final_time)
-                elif packet.stream.index in audio:
-                    aout, resampler = audio[packet.stream.index]
-                    if frame.pts is not None:
-                        frame.pts -= round(origin / frame.time_base)
-                    for resampled in resampler.resample(frame):
-                        for encoded in aout.encode(resampled):
-                            target.mux(encoded)
+            image = frame.to_image()
+            if info["rotation"]:
+                image = image.rotate(info["rotation"], expand=True)
+            pixels = renderer.render(image)
+            if options.format == "gif":
+                indexed = Image.fromarray(pixels).quantize(colors=256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+                colors = np.asarray(indexed.getpalette(), dtype=np.uint8).reshape(-1, 3)
+                palette = np.zeros((256, 4), dtype=np.uint8)
+                palette[:, 0] = 255
+                palette[:len(colors), 1:] = colors
+                return av.VideoFrame.from_ndarray((np.asarray(indexed), palette), format="pal8")
+            return av.VideoFrame.from_ndarray(pixels, format="rgb24")
+
+        def consume():
+            nonlocal processed, last_pts, final_time, video_pending
+            stream_index, frame, future = pending.popleft()
+            if stopping.is_set():
+                raise RuntimeError("Обработка видео прервана сервером. Неполный файл не сохранён.")
+            if future is not None:
+                rendered = future.result()
+                video_pending -= 1
+                time = float(frame.pts * frame.time_base) - origin if frame.pts is not None else processed / float(rate)
+                rendered.pts = max(last_pts + 1, round(time / video_tb))
+                rendered.time_base = video_tb
+                duration = float(frame.duration * frame.time_base) if frame.duration else 1 / float(rate)
+                rendered.duration = max(1, round(duration / video_tb))
+                durations[rendered.pts] = rendered.duration
+                last_pts = rendered.pts
+                mux_video(vout.encode(rendered))
+                processed += 1
+                final_time = time + duration
+                progress(processed, final_time)
+            elif stream_index in audio:
+                aout, resampler = audio[stream_index]
+                if frame.pts is not None:
+                    frame.pts -= round(origin / frame.time_base)
+                for resampled in resampler.resample(frame):
+                    for encoded in aout.encode(resampled):
+                        target.mux(encoded)
+
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="ascii-frame") as pool:
+            try:
+                for packet in source.demux(vin, *audio_inputs):
+                    if stopping.is_set():
+                        raise RuntimeError("Обработка видео прервана сервером. Неполный файл не сохранён.")
+                    for frame in packet.decode():
+                        future = pool.submit(prepare_frame, frame) if packet.stream.type == "video" else None
+                        pending.append((packet.stream.index, frame, future))
+                        video_pending += future is not None
+                        while pending and (video_pending >= workers * 2 or len(pending) >= 32
+                                           or pending[0][2] is None or pending[0][2].done()):
+                            consume()
+                while pending:
+                    consume()
+            finally:
+                for _, _, future in pending:
+                    if future is not None:
+                        future.cancel()
         mux_video(vout.encode(None))
         for aout, resampler in audio.values():
             for frame in resampler.resample(None):

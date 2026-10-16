@@ -6,3 +6,5 @@ python-multipart>=0.0.20,<1
 av>=16.1,<17
 numpy>=2,<3
 pydantic>=2.9,<3
+psutil>=6,<8
+yt-dlp[default]>=2025.11.12

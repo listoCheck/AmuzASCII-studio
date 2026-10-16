@@ -43,7 +43,7 @@ test('file names cannot escape directories or use reserved Windows names',()=>{
   assert.equal(safeFilename('Картинка.webp'),'Картинка')
 })
 test('backend video formats work without browser recorders and migrate saved choices',()=>{
-  assert.deepEqual(videoFormats.map(format=>format.value),['mp4','webm'])
+  assert.deepEqual(videoFormats.map(format=>format.value),['mp4','webm','gif'])
   assert.equal(sanitizePreferences({videoFormat:'webm-vp9'}).videoFormat,'webm')
   assert.equal(sanitizePreferences({videoFormat:'webm-vp8'}).videoFormat,'webm')
   assert.equal(sanitizePreferences({videoFormat:'invalid'}).videoFormat,'mp4')
@@ -53,7 +53,7 @@ test('colored HTML export escapes characters and title and declares its language
   assert.ok(html.includes('lang="en"'));assert.ok(html.includes('&lt;script&gt;'));assert.ok(!html.includes('<script>'))
   assert.ok(html.includes('&amp;'));assert.ok(html.includes('color:#aabbcc'));assert.ok(html.includes('background:#001122'))
 })
-import {svgPreview,canUseVectorPreview} from './svgPreview.js'
+import {svgPreview,canUseVectorPreview,useFontOutlinePreview} from './svgPreview.js'
 
 test('dense LIVE previews are not replaced by aliased SVG text after slider release',()=>{
   const dense={columns:1000,rows:500,width:1077,height:1077,displayWidth:1077,displayHeight:1077}
@@ -82,4 +82,13 @@ test('SVG preview keeps text contours, escapes custom symbols and uses one eleme
   assert.ok(svg.includes('viewBox="0 0 24 32"'))
   assert.ok(svg.includes('font-weight="bold"'))
   assert.ok(svg.includes('mask="url(#ink)"'))
+})
+
+
+test('video at medium detail avoids thousands of native text calls while paused previews keep outlines',()=>{
+  const medium={columns:200,rows:56,width:1077,height:603}
+  assert.equal(useFontOutlinePreview(medium,false),true)
+  assert.equal(useFontOutlinePreview(medium,true),false)
+  assert.equal(useFontOutlinePreview({columns:80,rows:23,width:1077,height:606},true),true)
+  assert.equal(useFontOutlinePreview({columns:1000,rows:281,width:1077,height:606},false),false)
 })

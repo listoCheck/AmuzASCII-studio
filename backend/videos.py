@@ -7,6 +7,8 @@ import tempfile
 import threading
 import time
 import uuid
+
+import psutil
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -88,7 +90,30 @@ class VideoStore:
             return source
 
     def public(self, job):
-        return {k: job[k] for k in ("id", "source_id", "status", "progress", "frames", "total_frames", "duration", "error", "format", "result")}
+        if job["status"] == "processing" and job.get("telemetry"):
+            self.update_metrics(job)
+        return {k: job[k] for k in ("id", "source_id", "status", "progress", "frames", "total_frames", "duration", "error", "format", "result", "metrics")}
+
+    def update_metrics(self, job, complete=False):
+        sampler = job["telemetry"]
+        now, cpu = time.monotonic(), time.process_time()
+        elapsed = max(0, now - sampler["started"])
+        interval = now - sampler["sampled"]
+        metrics = dict(job["metrics"])
+        if interval >= .1:
+            # process_time includes all threads; normalize to total host CPU.
+            metrics["cpu_percent"] = round(min(100, max(0, (cpu - sampler["cpu"]) / interval * 100 / (os.cpu_count() or 1))), 1)
+            sampler.update(sampled=now, cpu=cpu)
+        try:
+            metrics["memory_mb"] = round(psutil.Process().memory_info().rss / 1048576, 1)
+        except (psutil.Error, OSError):
+            metrics["memory_mb"] = None
+        fps = job["frames"] / elapsed if elapsed > 0 else 0
+        ratio = job["frames"] / job["total_frames"] if job["total_frames"] else job["progress"] / 100
+        ratio = min(1, max(0, ratio))
+        metrics.update(elapsed_seconds=round(elapsed, 2), fps=round(fps, 2),
+                       eta_seconds=0 if complete else round(elapsed * (1 - ratio) / ratio, 1) if ratio > 0 else None)
+        job["metrics"] = metrics
 
     def start(self, source_id, options):
         source = self.source(source_id)
@@ -103,7 +128,7 @@ class VideoStore:
                    "frames": 0, "total_frames": source["info"]["frames"], "duration": source["info"]["duration"],
                    "error": "", "format": options.format, "result": None, "directory": directory,
                    "path": directory / ("result." + options.format), "filename": name + "." + options.format,
-                   "touched": time.monotonic()}
+                   "touched": time.monotonic(), "metrics": {"elapsed_seconds": 0, "fps": 0, "eta_seconds": None, "cpu_percent": None, "memory_mb": None}}
             self.jobs[key] = job
             self.executor.submit(self.run, job, source, options)
             return self.public(job)
@@ -113,6 +138,7 @@ class VideoStore:
         try:
             with self.lock:
                 job["status"] = "processing"
+                job["telemetry"] = {"started": time.monotonic(), "sampled": time.monotonic(), "cpu": time.process_time()}
             def progress(frames, seconds):
                 with self.lock:
                     job["frames"] = frames
@@ -122,12 +148,15 @@ class VideoStore:
             result = transcode(source["path"], pending, options, source["info"], progress, self.stopping)
             pending.replace(job["path"])
             with self.lock:
+                self.update_metrics(job, complete=True)
                 job.update(status="completed", progress=100, result=result, touched=time.monotonic())
         except Exception:
             logger.exception("ASCII video conversion failed: %s", job["id"])
             pending.unlink(missing_ok=True)
             job["path"].unlink(missing_ok=True)
             with self.lock:
+                if job.get("telemetry"):
+                    self.update_metrics(job)
                 job.update(status="failed", error="Не удалось обработать видео полностью. Неполный файл не сохранён.", touched=time.monotonic())
 
     def job(self, key):
@@ -200,4 +229,4 @@ def download_video(job_id: str, request: Request):
     job = store_for(request).job(job_id)
     if job["status"] != "completed" or not job["path"].is_file():
         raise HTTPException(409, "Полное видео ещё не готово.")
-    return FileResponse(job["path"], media_type="video/mp4" if job["format"] == "mp4" else "video/webm", filename=job["filename"])
+    return FileResponse(job["path"], media_type={"mp4": "video/mp4", "webm": "video/webm", "gif": "image/gif"}[job["format"]], filename=job["filename"])

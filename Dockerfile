@@ -6,14 +6,17 @@ RUN npm ci --no-audit --no-fund
 COPY frontend/ ./
 RUN npm run build
 
+FROM node:22-bookworm-slim AS youtube-js
+
 FROM python:3.13-slim AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
+COPY --from=youtube-js /usr/local/bin/node /usr/local/bin/node
 WORKDIR /app
 COPY requirements.txt ./
 RUN python -m pip install --no-cache-dir -r requirements.txt \
-    && apt-get update && apt-get install -y --no-install-recommends fonts-dejavu-core \
+    && apt-get update && apt-get install -y --no-install-recommends fonts-dejavu-core libstdc++6 \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --uid 10001 --create-home app \
     && mkdir -p /data && chown app:app /data

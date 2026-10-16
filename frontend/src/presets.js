@@ -1,9 +1,9 @@
 import { charsets, palettes } from './ascii.js'
 
-export const defaultSettings={columns:160,charset:'classic',custom:' .:-=+*#%@',brightness:0,inkBrightness:120,contrast:20,saturation:100,gamma:1,rotation:0,mirror:false,invert:false}
+export const defaultSettings={columns:80,charset:'classic',custom:' .:-=+*#%@',brightness:0,inkBrightness:120,contrast:20,saturation:100,gamma:1,rotation:0,mirror:false,invert:false}
 export const defaultAppearance={colorMode:'palette',foreground:'#d1e8a0',background:'#10140f',paletteIndex:0}
 
-export function normalizeColumns(value,fallback=160){
+export function normalizeColumns(value,fallback=80){
   if(String(value).trim()===''||!Number.isFinite(Number(value)))return fallback
   return Math.max(40,Math.min(1000,Math.round(Number(value))))
 }

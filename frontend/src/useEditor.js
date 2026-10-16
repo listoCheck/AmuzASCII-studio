@@ -16,9 +16,11 @@ export default function useEditor() {
   const exportQuality=toRef(preferences,'exportQuality'),fileName=toRef(preferences,'fileName'),videoFormat=toRef(preferences,'videoFormat')
   const colorMode=ref('palette'),foreground=ref('#d1e8a0'),background=ref('#10140f'),paletteIndex=ref(0)
   const canvasStyle=ref({}),frameTime=ref(0),vectorSrc=ref('')
-  const detailDraft=ref(String(settings.columns)),isVideo=ref(false),duration=ref(0)
+  const detailDraft=ref(String(settings.columns)),isVideo=ref(false),duration=ref(0),isFullscreen=ref(false)
+  const linkUrl=ref(''),linkLoading=ref(false),linkProgress=shallowRef(null)
+  let linkController=null,linkJobId='',linkVersion=0
   const playing=ref(false),currentTime=ref(0),volume=ref(1),playbackRate=ref(1),loop=ref(false),videoFPS=ref(30),previewError=ref('')
-  const videoDownloading=ref(false),downloadProgress=ref(0),downloadBytes=ref(0),downloadTotal=ref(0)
+  const videoDownloading=ref(false),downloadProgress=ref(0),downloadBytes=ref(0),downloadTotal=ref(0),downloadETA=ref(null)
   let video=null,videoFrame=0,videoFrameNative=false,lastVideoFrame=-Infinity,downloadRequest=null
   const videoSource=shallowRef(null),videoJob=shallowRef(null),videoProcessing=ref(false)
   if(!videoFormats.some(item=>item.value===videoFormat.value))videoFormat.value='mp4'
@@ -106,7 +108,7 @@ export default function useEditor() {
         }
       }catch{disableWorker();return}
     }
-    pendingPreview={id:previewId,vector,sourceVersion:video?`${loadId}:${video.currentTime}`:loadId,mediaTime:video?.currentTime||0,
+    pendingPreview={id:previewId,vector,playing:playing.value,sourceVersion:video?`${loadId}:${video.currentTime}`:loadId,mediaTime:video?.currentTime||0,
       settings:{...settings},geo:previewGeometryNow(),colorMode:colorMode.value,foreground:foreground.value,
       background:background.value,colors:[...palettes[paletteIndex.value].colors]}
     sendPreview()
@@ -168,7 +170,14 @@ export default function useEditor() {
   watch(volume,value=>{if(video)video.volume=Number(value)})
   watch(playbackRate,value=>{if(video)video.playbackRate=Number(value)})
   watch(loop,value=>{if(video)video.loop=value})
-  function fullscreen(){stage.value?.parentElement?.requestFullscreen?.().catch(()=>{notice.value='Полноэкранный режим недоступен.'})}
+  function syncFullscreen(){isFullscreen.value=document.fullscreenElement===stage.value?.parentElement;resizePreview()}
+  async function fullscreen(){
+    try{
+      if(document.fullscreenElement)await document.exitFullscreen()
+      else if(stage.value?.parentElement?.requestFullscreen)await stage.value.parentElement.requestFullscreen()
+      else notice.value='Полноэкранный режим недоступен.'
+    }catch{notice.value='Полноэкранный режим недоступен.'}
+  }
   function timeLabel(value){const n=Number.isFinite(value)?Math.floor(value):0;return `${Math.floor(n/60)}:${String(n%60).padStart(2,'0')}`}
   function selectPalette(i){paletteIndex.value=i;foreground.value=palettes[i].colors[3];background.value=palettes[i].bg;colorMode.value='palette'}
   function fit(){
@@ -332,20 +341,20 @@ export default function useEditor() {
   }
   async function downloadVideo(){
     if(videoJob.value?.status!=='completed'||videoDownloading.value)return
-    videoDownloading.value=true;downloadProgress.value=0;downloadBytes.value=0;downloadTotal.value=0;error.value=''
+    videoDownloading.value=true;downloadProgress.value=0;downloadBytes.value=0;downloadTotal.value=0;downloadETA.value=null;error.value=''
     const job=videoJob.value
     try{
       const blob=await new Promise((resolve,reject)=>{
-        const request=new XMLHttpRequest();downloadRequest=request
+        const request=new XMLHttpRequest(),started=performance.now();downloadRequest=request
         request.open('GET',`/api/video-jobs/${job.id}/download`);request.responseType='blob'
-        request.onprogress=event=>{downloadBytes.value=event.loaded;downloadTotal.value=event.lengthComputable?event.total:0;downloadProgress.value=event.lengthComputable?Math.round(event.loaded/event.total*100):0}
+        request.onprogress=event=>{downloadBytes.value=event.loaded;downloadTotal.value=event.lengthComputable?event.total:0;downloadProgress.value=event.lengthComputable?Math.round(event.loaded/event.total*100):0;const elapsed=(performance.now()-started)/1000;downloadETA.value=event.lengthComputable&&event.loaded>0&&elapsed>=.25?Math.max(0,(event.total-event.loaded)*elapsed/event.loaded):null}
         request.onload=()=>request.status===200?resolve(request.response):reject(new Error('Не удалось скачать видео. Повторите скачивание.'))
         request.onerror=()=>reject(new Error('Не удалось скачать видео. Повторите скачивание.'))
         request.onabort=()=>reject(new DOMException('Aborted','AbortError'))
         request.send()
       })
       if(disposed||videoJob.value?.id!==job.id)return
-      downloadProgress.value=100;downloadBytes.value=blob.size;downloadTotal.value=blob.size
+      downloadProgress.value=100;downloadETA.value=0;downloadBytes.value=blob.size;downloadTotal.value=blob.size
       downloadBlob(blob,job.format);notice.value='Полное ASCII-видео скачано.'
     }catch(e){if(e.name!=='AbortError'&&!disposed)error.value=e.message}
     finally{downloadRequest=null;videoDownloading.value=false}
@@ -401,8 +410,52 @@ export default function useEditor() {
     }catch(e){if(e.name!=='AbortError')forgetVideoJob();return false}
     finally{busy.value=false}
   }
+  function cancelLink(){
+    linkVersion++;linkController?.abort();linkLoading.value=false;busy.value=false
+    if(linkJobId)fetch(`/api/imports/${linkJobId}`,{method:'DELETE'}).catch(()=>{})
+    linkJobId=''
+  }
+  async function loadLink(){
+    if(linkLoading.value||videoProcessing.value||videoDownloading.value)return
+    const version=++linkVersion
+    linkController?.abort();linkController=new AbortController()
+    const signal=linkController.signal
+    linkLoading.value=true;busy.value=true;error.value='';notice.value='';linkProgress.value=null;loadController?.abort()
+    try{
+      let job=await videoResponse(await fetch('/api/imports',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:linkUrl.value.trim()}),signal}))
+      linkJobId=job.id
+      while(!signal.aborted&&version===linkVersion){
+        linkProgress.value=job
+        if(job.status==='failed')throw new Error(job.error)
+        if(job.status==='completed'){
+          if(job.media.kind==='image'){
+            const response=await fetch(job.media.url,{signal});if(!response.ok)throw new Error('Не удалось открыть загруженное изображение.')
+            const blob=await response.blob();if(signal.aborted||version!==linkVersion)return
+            await openBlob(blob,job.media.name)
+          }else{
+            const source=job.media.source
+            const response=await fetch(source.poster_url,{signal});if(!response.ok)throw new Error('Не удалось загрузить первый кадр видео.')
+            const blob=await response.blob();if(signal.aborted||version!==linkVersion)return
+            if(!await openBlob(blob,source.name))return
+            isVideo.value=true;videoSource.value=source;duration.value=source.duration;videoJob.value=null
+            schedule();await attachVideo(`/api/videos/${source.id}/source`)
+          }
+          if(!signal.aborted)notice.value='Медиа по ссылке загружено.'
+          return
+        }
+        await new Promise((resolve,reject)=>{
+          const abort=()=>{clearTimeout(timer);reject(new DOMException('Aborted','AbortError'))}
+          const timer=setTimeout(()=>{signal.removeEventListener('abort',abort);resolve()},600)
+          signal.addEventListener('abort',abort,{once:true})
+        })
+        job=await videoResponse(await fetch(`/api/imports/${job.id}`,{signal}))
+      }
+    }catch(e){if(e.name!=='AbortError'&&!disposed&&version===linkVersion)error.value=e.message}
+    finally{if(version===linkVersion){linkLoading.value=false;busy.value=false;linkJobId=''}}
+  }
   function upload(selected){
     if(!selected)return
+    if(linkLoading.value){notice.value='Дождитесь загрузки по ссылке или отмените её.';return}
     if(videoProcessing.value||videoDownloading.value){notice.value='Дождитесь завершения обработки видео.';return}
     if(selected.type.startsWith('video/')||/\.(mp4|webm|mov|m4v|ogv|avi|mkv|mpeg|mpg|wmv|flv)$/i.test(selected.name)){
       if(selected.size>250*1024*1024){error.value='Максимальный размер видео — 250 МБ.';return}
@@ -457,6 +510,7 @@ export default function useEditor() {
   onMounted(async()=>{
     resizeObserver=new ResizeObserver(resizePreview);resizeObserver.observe(stage.value)
     window.addEventListener('resize',resizePreview)
+    document.addEventListener('fullscreenchange',syncFullscreen)
     window.addEventListener('paste',pasteImage)
     loadController=new AbortController()
     if(await restoreVideoJob())return
@@ -464,6 +518,6 @@ export default function useEditor() {
     catch(e){if(e.name!=='AbortError')error.value='Не удалось загрузить демо. Загрузите своё изображение.'}
   })
   const presetControls=usePresets(settings,{colorMode,foreground,background,paletteIndex},error,notice)
-  onBeforeUnmount(()=>{disposed=true;previewWorker?.terminate();loadId++;loadController?.abort();cancelAnimationFrame(frame);resizeObserver?.disconnect();window.removeEventListener('resize',resizePreview);window.removeEventListener('paste',pasteImage);releaseMedia()})
-  return {...presetControls,settings,art,fileInput,file,result,stage,busy,error,notice,showOriginal,zoom,format,colorMode,foreground,background,paletteIndex,palettes,charsets,controls,canvasStyle,frameTime,vectorSrc,selectPalette,upload,drop,reset,setZoom,download,copy,detailDraft,updateDetail,commitDetail,isVideo,duration,playing,currentTime,volume,playbackRate,loop,videoFPS,previewError,togglePlay,seek,fullscreen,videoDownloading,downloadProgress,downloadBytes,downloadTotal,videoSource,videoJob,videoProcessing,startVideoProcessing,downloadVideo,timeLabel,exportQuality,fileName,videoFormat,videoFormats}
+  onBeforeUnmount(()=>{disposed=true;cancelLink();document.removeEventListener('fullscreenchange',syncFullscreen);previewWorker?.terminate();loadId++;loadController?.abort();cancelAnimationFrame(frame);resizeObserver?.disconnect();window.removeEventListener('resize',resizePreview);window.removeEventListener('paste',pasteImage);releaseMedia()})
+  return {...presetControls,settings,art,fileInput,file,result,stage,busy,error,notice,showOriginal,zoom,format,colorMode,foreground,background,paletteIndex,palettes,charsets,controls,canvasStyle,frameTime,vectorSrc,selectPalette,upload,drop,reset,setZoom,download,copy,detailDraft,updateDetail,commitDetail,isVideo,duration,playing,currentTime,volume,playbackRate,loop,videoFPS,previewError,togglePlay,seek,fullscreen,isFullscreen,linkUrl,linkLoading,linkProgress,loadLink,cancelLink,videoDownloading,downloadProgress,downloadBytes,downloadTotal,downloadETA,videoSource,videoJob,videoProcessing,startVideoProcessing,downloadVideo,timeLabel,exportQuality,fileName,videoFormat,videoFormats}
 }

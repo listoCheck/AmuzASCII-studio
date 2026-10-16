@@ -20,7 +20,7 @@ export function sanitizePreferences(input={}){
   if(!input||typeof input!=='object')input={}
   const clean={...preferenceDefaults}
   if(['webm-vp9','webm-vp8'].includes(input.videoFormat))clean.videoFormat='webm'
-  for(const [key,allowed] of [['locale',locales],['theme',themes.map(t=>t.id)],['density',['comfortable','compact']],['imageFormat',formats],['videoFormat',['webm','mp4']]])if(allowed.includes(input[key]))clean[key]=input[key]
+  for(const [key,allowed] of [['locale',locales],['theme',themes.map(t=>t.id)],['density',['comfortable','compact']],['imageFormat',formats],['videoFormat',['webm','mp4','gif']]])if(allowed.includes(input[key]))clean[key]=input[key]
   for(const [key,min,max] of [['fontScale',90,120],['panelWidth',280,440],['radius',0,18],['exportQuality',10,100]])if(typeof input[key]==='number'&&Number.isFinite(input[key]))clean[key]=Math.max(min,Math.min(max,Math.round(input[key])))
   if(typeof input.accent==='string'&&/^#[0-9a-f]{6}$/i.test(input.accent))clean.accent=input.accent
   if(typeof input.grid==='boolean')clean.grid=input.grid

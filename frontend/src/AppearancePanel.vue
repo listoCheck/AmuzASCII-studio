@@ -9,7 +9,8 @@ const dialog=ref(null)
     <select v-model="preferences.locale" :aria-label="t('Язык')" class="language-select"><option value="ru">Русский</option><option value="en">English</option></select>
     <button class="appearance-trigger" @click="dialog.showModal()" :title="t('Персонализация')" :aria-label="t('Персонализация')">◐ <span>{{t('Оформление')}}</span></button>
   </div>
-  <dialog ref="dialog" class="appearance-dialog" @click="event=>{if(event.target===dialog)dialog.close()}">
+  <dialog ref="dialog" class="appearance-dialog appearance-settings-dialog" @click="event=>{if(event.target===dialog)dialog.close()}">
+    <div class="appearance-scroll">
     <div class="dialog-heading"><div><h2>{{t('Персонализация')}}</h2><p>{{t('Настройте интерфейс под себя')}}</p></div><button @click="dialog.close()" :aria-label="t('Закрыть')">×</button></div>
     <label>{{t('Тема интерфейса')}}</label>
     <div class="theme-grid"><button v-for="theme in themes" :key="theme.id" :class="{active:preferences.theme===theme.id}" :aria-pressed="preferences.theme===theme.id" @click="chooseTheme(theme.id)"><span class="theme-preview" aria-hidden="true" :style="{background:theme.colors[0],color:theme.colors[2]}"><i :style="{background:theme.colors[1]}"></i><b>Aa</b><i :style="{background:theme.accent}"></i></span><span>{{t(theme.name)}}</span></button></div>
@@ -20,5 +21,6 @@ const dialog=ref(null)
     <label class="check"><span>{{t('Сетка рабочей области')}}</span><input type="checkbox" v-model="preferences.grid"></label>
     <p class="hint">{{t('Настройки оформления не меняют цвета ASCII-изображения.')}}</p>
     <div class="dialog-actions"><button @click="resetAppearance">{{t('Сбросить оформление')}}</button><button class="primary" @click="dialog.close()">{{t('Готово')}}</button></div>
+    </div>
   </dialog>
 </template>

@@ -48,6 +48,7 @@ Use **Export** in the upper-right corner to open the export dialog.
 | **SVG** | Scalable vector characters. |
 | **TXT** | Plain ASCII text. |
 | **HTML** | Standalone page with colored ASCII art. |
+| **GIF** | Full looping animation without audio, up to 256 colors per frame. |
 | **MP4 / WebM** | Complete server-rendered video: H.264/AAC or VP9/Opus. |
 
 Video export always includes the **entire clip**, preserving all frames and original timestamps, including variable frame rates. Audio tracks are re-encoded as stereo AAC or Opus. Seeking, playback speed, and preview FPS do not trim or change the exported video. Settings are captured when export starts.
@@ -96,7 +97,7 @@ To change the port, copy `.env.example` to `.env` and set, for example, `AMUZASC
 
 ### Local installation
 
-**Requirements:** Python **3.11+**, Node.js **20.19+ or 22.12+**, and npm.
+**Requirements:** Python **3.11+**, Node.js **22.12+**, and npm.
 
 Build the frontend first: `frontend/dist` is excluded from Git.
 
@@ -192,3 +193,22 @@ npm --prefix frontend run build
 With Vite running, open the **[browser rendering checks](http://127.0.0.1:5173/tests/preview.html)** to verify adjustments, glyph sharpness, brightness, grid preservation, and horizontal banding.
 
 More details on themes, settings, APIs, and video processing are available in the **[Russian guide](docs/guide.md)**. Source code: **[listoCheck/AmuzASCII-studio](https://github.com/listoCheck/AmuzASCII-studio/tree/master)**.
+
+During server export, header metrics switch to Python process CPU, resident memory, and average frames per second. The export dialog shows elapsed time and an estimated remaining time. CPU is normalized across all logical server CPUs and excludes other processes. Browser metrics return after processing.
+
+Video conversion pipelines decoding, up to two parallel ASCII frame renderers, and ordered encoding. At most four video frames and 32 demuxed frame events are queued. Frames above 4 megapixels or hosts with fewer than four logical CPUs use one renderer to limit memory/CPU pressure. Frame order, timestamps, audio, and encoder quality settings are unchanged.
+
+
+### Open from URL
+
+Use **Open from URL** in the right sidebar for a direct HTTP/HTTPS photo/video URL or a single YouTube video. Download progress, transferred size, and cancellation are provided. Imported media uses the same editing, playback, and complete backend export features. Ordinary webpages, channels, playlists, and live streams are not supported. Limits remain 20 MB / 25 MP for images and 250 MB for videos; oversized files are rejected rather than truncated.
+
+YouTube support uses `yt-dlp[default]` with Node.js 22+ on PATH. Docker includes Node. If YouTube changes its protection or restricts the server IP, update with `python -m pip install -U "yt-dlp[default]"`. Private/login-required videos are not imported. See the [yt-dlp EJS documentation](https://github.com/yt-dlp/yt-dlp/wiki/EJS) for runtime requirements.
+
+Local image files stay in the browser; **URL imports send the URL and media through the server**. Public addresses, redirects, and file sizes are checked. For Fake-IP DNS (198.18.0.0/15), Cloudflare DNS-over-HTTPS resolves the real public IP; local/private addresses remain blocked.
+
+The fullscreen button is available in the canvas caption for both photos and videos, and in the player. Click again to exit, or press Esc.
+
+New/reset settings default to **80 columns**; saved user presets keep their existing values. GIF is available under Export → Video format. It retains every frame but has no audio, uses up to 256 colors, and rounds timing to hundredths of a second. Sources above 100 FPS may play more slowly to retain every frame.
+
+URL import shows downloaded / total megabytes and an approximate remaining time. Unknown values are shown as calculating; estimated YouTube sizes carry ≈ until actual response sizes are available. Video and audio downloads are aggregated. Opening another file releases the old browser preview; server sources/posters/exports are not immediately deleted. Inactive data expires after one hour and is removed on the next API access; normal shutdown removes temporary directories. Downloaded user files are never deleted. Individual YouTube tracks are removed after successful import.

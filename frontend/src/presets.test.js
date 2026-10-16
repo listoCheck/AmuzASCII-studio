@@ -18,7 +18,7 @@ test('keyboard detail rounds, bounds and tolerates incomplete input',()=>{
   assert.equal(normalizeColumns('512'),512)
   assert.equal(normalizeColumns('1001'),1000)
   assert.equal(normalizeColumns('1'),40)
-  assert.equal(normalizeColumns(''),160)
+  assert.equal(normalizeColumns(''),80)
   assert.equal(normalizeColumns('wrong',240),240)
   assert.equal(normalizeColumns('512.6'),513)
 })

@@ -9,9 +9,11 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageDraw, ImageEnhance, ImageOps, UnidentifiedImageError
 from backend.videos import router as videos_router
+from backend.remote import router as imports_router
 
 app = FastAPI(title="AmuzASCII", version="1.0.0")
 app.include_router(videos_router)
+app.include_router(imports_router)
 Image.MAX_IMAGE_PIXELS = 25_000_000
 MAX_UPLOAD = 20 * 1024 * 1024
 from backend.characters import SETS
@@ -101,7 +103,7 @@ def demo():
 
 
 @app.post("/api/convert")
-def convert(file: UploadFile | None = File(None), columns: int = Form(160),
+def convert(file: UploadFile | None = File(None), columns: int = Form(80),
             charset: str = Form("classic"), custom: str = Form(" .:-=+*#%@"),
             brightness: float = Form(0), contrast: float = Form(20),
             saturation: float = Form(100), gamma: float = Form(1),

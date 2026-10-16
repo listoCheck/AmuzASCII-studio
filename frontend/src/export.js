@@ -7,10 +7,10 @@ export const imageFormats=[
   {value:'html',label:'HTML — цветной ASCII'},
 ]
 export function safeFilename(value){
-  const base=String(value||'').replace(/[<>:"/\\|?*\x00-\x1f]/g,'_').replace(/\.(png|jpe?g|webp|svg|txt|html|webm|mp4)$/i,'').replace(/[.\s]+$/g,'').slice(0,80)
+  const base=String(value||'').replace(/[<>:"/\\|?*\x00-\x1f]/g,'_').replace(/\.(png|jpe?g|webp|svg|txt|html|webm|mp4|gif)$/i,'').replace(/[.\s]+$/g,'').slice(0,80)
   return !base.trim()||/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(base)?'AmuzASCII':base
 }
-export const videoFormats=[{value:'mp4',label:'MP4 / H.264'},{value:'webm',label:'WebM / VP9'}]
+export const videoFormats=[{value:'mp4',label:'MP4 / H.264'},{value:'webm',label:'WebM / VP9'},{value:'gif',label:'GIF'}]
 export const escapeHtml=value=>String(value).replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]))
 export function htmlExport(data,colorAt,background,title,language){
   const body=data.lines.map((line,y)=>Array.from(line).map((ch,x)=>`<span style="color:${colorAt(y*data.columns+x)}">${escapeHtml(ch)}</span>`).join('')).join('\n')
