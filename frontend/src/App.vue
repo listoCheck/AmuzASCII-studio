@@ -2,6 +2,7 @@
 import {ref} from 'vue'
 import useEditor from './useEditor.js'
 import AppearancePanel from './AppearancePanel.vue'
+import BrowserMetrics from './BrowserMetrics.vue'
 import {t,number} from './i18n.js'
 import {preferences} from './preferences.js'
 import {imageFormats} from './export.js'
@@ -15,7 +16,7 @@ async function beginVideoExport(){await startVideoProcessing()}
 </script>
 
 <template>
-  <header><a class="brand" href="/"><img class="brandicon" src="/assets/favicon.svg" alt="">AmuzASCII<span>ASCII ART</span></a><div class="tag">{{t('ИЗ ПИКСЕЛЕЙ В СИМВОЛЫ.')}}</div><AppearancePanel/><button class="primary" :disabled="busy || !result || (!!error && !isVideo)" @click="openExport">{{videoProcessing||videoDownloading?'◌':'↗'}} {{t('Экспорт')}}<span v-if="videoProcessing"> · {{number(videoJob?.progress || 0)}}%</span><span v-else-if="videoDownloading"> · {{t('Скачивание')}} {{downloadTotal?number(downloadProgress)+'%':''}}</span></button></header>
+  <header><div class="header-identity"><a class="brand" href="/"><img class="brandicon" src="/assets/favicon.svg" alt="">AmuzASCII<span>ASCII ART</span></a><div class="tag">{{t('ИЗ ПИКСЕЛЕЙ В СИМВОЛЫ.')}}</div></div><BrowserMetrics :active="!isVideo" :render-time="frameTime"/><AppearancePanel/><button class="primary" :disabled="busy || !result || (!!error && !isVideo)" @click="openExport">{{videoProcessing||videoDownloading?'◌':'↗'}} {{t('Экспорт')}}<span v-if="videoProcessing"> · {{number(videoJob?.progress || 0)}}%</span><span v-else-if="videoDownloading"> · {{t('Скачивание')}} {{downloadTotal?number(downloadProgress)+'%':''}}</span></button></header>
   <main>
     <aside class="rail"><button class="selected" :title="t('Редактор')">⌘</button><button :title="t('Загрузить изображение или видео')" @click="fileInput.click()">↥</button><div class="railbottom">V.01</div></aside>
     <section class="workspace">

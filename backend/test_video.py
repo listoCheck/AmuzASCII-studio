@@ -174,3 +174,35 @@ def test_preview_source_supports_ranges_and_matches_the_original(tmp_path):
         assert response.headers["content-disposition"] == "inline"
         assert client.get(url).content == payload
         assert client.get("/api/videos/missing/source").status_code == 404
+
+
+@pytest.mark.parametrize("mode", ["palette", "original", "mono"])
+def test_cached_compositing_matches_float_reference(mode):
+    from PIL import Image, ImageOps
+    from backend.video_render import AsciiFrames
+    options = VideoOptions(columns=63, colorMode=mode, rotation=90, mirror=True,
+                           gamma=1.3, saturation=143, brightness=12, contrast=-15,
+                           invert=True, inkBrightness=177, background="#2d1438")
+    image = Image.fromarray(np.random.default_rng(7).integers(0, 256, (90, 160, 3), dtype=np.uint8))
+    renderer = AsciiFrames(160, 90, options)
+    actual = renderer.render(image)
+    # Former full float-plane compositor: verifies that the faster lookup path
+    # retains antialiasing, channel rounding, and output pixels in all color modes.
+    transformed = ImageOps.mirror(image.rotate(-options.rotation, expand=True))
+    pixels = np.asarray(transformed.resize((renderer.columns, renderer.rows), Image.Resampling.LANCZOS), dtype=np.float32)
+    weights = np.array([.2126, .7152, .0722], dtype=np.float32)
+    luminance = pixels @ weights
+    rgb = renderer.lut[np.rint(np.clip(luminance[..., None] + (pixels - luminance[..., None]) * options.saturation / 100, 0, 255)).astype(np.uint8)]
+    light = rgb @ weights
+    level = 255 - light
+    indices = np.minimum(len(renderer.ramp) - 1, (level / 256 * len(renderer.ramp)).astype(np.int32))
+    mask = renderer.atlas[indices].transpose(0, 2, 1, 3).reshape(renderer.rows * renderer.ch, renderer.columns * renderer.cw).astype(np.float32) / 255
+    color = rgb if mode == "original" else renderer.tones[np.minimum(31, np.rint(light).astype(np.int32) >> 3)]
+    if mode == "mono":
+        color = np.broadcast_to(renderer.foreground, (*indices.shape, 3))
+    color = np.clip(color.astype(np.float32) * (options.inkBrightness / 100), 0, 255)
+    color = np.repeat(np.repeat(color, renderer.ch, axis=0), renderer.cw, axis=1)
+    expected = Image.fromarray(np.rint(renderer.background + (color - renderer.background) * mask[..., None]).astype(np.uint8))
+    if expected.size != renderer.size:
+        expected = expected.resize(renderer.size, Image.Resampling.LANCZOS)
+    assert np.array_equal(actual, np.asarray(expected))

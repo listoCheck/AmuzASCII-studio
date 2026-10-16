@@ -8,7 +8,7 @@ import {charsets,palettes} from './ascii.js'
 import {builtinPresets} from './presets.js'
 
 test('all interface translations and built-in names have English entries',()=>{
-  for(const file of ['App.vue','AppearancePanel.vue']){
+  for(const file of ['App.vue','AppearancePanel.vue','BrowserMetrics.vue']){
     const source=readFileSync(new URL(file,import.meta.url),'utf8')
     for(const match of source.matchAll(/\bt\('([^']+)'/g))assert.ok(messages.en[match[1]],`${file}: ${match[1]}`)
   }

@@ -246,5 +246,14 @@
   "Полное ASCII-видео скачано.": "Full ASCII video downloaded.",
   "Скачивание видео": "Downloading video",
   "Скачивание": "Downloading",
-  "МБ": "MB"
+  "МБ": "MB",
+  "Метрики браузера": "Browser metrics",
+  "Браузер": "Browser",
+  "Рендер": "Render",
+  "Блокировки": "Blocking",
+  "JS-память": "JS heap",
+  "Репозиторий проекта на GitHub": "Project repository on GitHub",
+  "Время последнего рендера предпросмотра, включая ожидание worker. Это не процент CPU.": "Last preview render time, including worker latency. This is not CPU usage.",
+  "Доля последних 2 секунд, занятая задачами основного потока длительностью от 50 мс. Не учитывает worker и GPU.": "Share of the last 2 seconds occupied by main-thread tasks lasting at least 50 ms. Excludes workers and GPU.",
+  "Используемая память JavaScript. Не включает весь браузер и GPU; доступна не во всех браузерах.": "Used JavaScript heap. Excludes total browser and GPU memory; not available in every browser."
 }

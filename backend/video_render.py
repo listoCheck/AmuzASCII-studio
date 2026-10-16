@@ -135,6 +135,21 @@ class AsciiFrames:
         tones = np.array([channels[int(p)] * (1 - p % 1) + channels[min(len(channels) - 1, int(p) + 1)] * (p % 1) for p in points])
         lum = tones @ np.array([.2126, .7152, .0722])
         self.tones = np.clip(lum[:, None] + (tones - lum[:, None]) * options.saturation / 100, 0, 255)
+        # Settings are fixed for the whole export. Cache every possible alpha
+        # blend once instead of expanding full-resolution float RGB planes on
+        # every frame (often hundreds of megabytes of temporary arrays).
+        alpha = np.arange(256, dtype=np.float32) / 255
+        gain = options.inkBrightness / 100
+        if options.colorMode == "original":
+            colors = np.clip(np.arange(256, dtype=np.float32) * gain, 0, 255)
+            self.blend = np.stack([np.rint(bg + (colors[:, None] - bg) * alpha).astype(np.uint8)
+                                   for bg in self.background])
+        else:
+            colors = self.foreground[None] if options.colorMode == "mono" else self.tones
+            colors = np.clip(colors.astype(np.float32) * gain, 0, 255)
+            self.blend = np.rint(self.background + (colors[:, None, :] - self.background)
+                                 * alpha[None, :, None]).astype(np.uint8)
+
 
     def render(self, image):
         s = self.s
@@ -149,14 +164,18 @@ class AsciiFrames:
         light = rgb @ weights
         level = 255 - light if s.invert else light
         indices = np.minimum(len(self.ramp) - 1, (level / 256 * len(self.ramp)).astype(np.int32))
-        mask = self.atlas[indices].transpose(0, 2, 1, 3).reshape(self.rows * self.ch, self.columns * self.cw).astype(np.float32) / 255
-        color = rgb if s.colorMode == "original" else self.tones[np.minimum(31, np.rint(light).astype(np.int32) >> 3)]
-        if s.colorMode == "mono":
-            color = np.broadcast_to(self.foreground, (*indices.shape, 3))
-        color = np.clip(color.astype(np.float32) * (s.inkBrightness / 100), 0, 255)
-        color = np.repeat(np.repeat(color, self.ch, axis=0), self.cw, axis=1)
-        result = self.background + (color - self.background) * mask[..., None]
-        image = Image.fromarray(np.rint(result).astype(np.uint8))
+        mask = self.atlas[indices]
+        if s.colorMode == "original":
+            result = np.empty((*mask.shape, 3), dtype=np.uint8)
+            for channel in range(3):
+                result[..., channel] = self.blend[channel][rgb[..., channel, None, None], mask]
+        elif s.colorMode == "mono":
+            result = self.blend[0, mask]
+        else:
+            tones = np.minimum(31, np.rint(light).astype(np.int32) >> 3)
+            result = self.blend[tones[..., None, None], mask]
+        result = result.transpose(0, 2, 1, 3, 4).reshape(self.rows * self.ch, self.columns * self.cw, 3)
+        image = Image.fromarray(result)
         if image.size != self.size:
             image = image.resize(self.size, Image.Resampling.LANCZOS)
         return np.asarray(image)
@@ -168,6 +187,8 @@ def transcode(source_path, output_path, options, info, progress, stopping):
     processed, last_pts, final_time = 0, -1, 0.0
     with av.open(str(source_path), options={"protocol_whitelist": "file,pipe"}) as source, av.open(str(output_path), "w", format=options.format) as target:
         vin = source.streams.video[0]
+        vin.codec_context.thread_count = min(4, os.cpu_count() or 1)
+        vin.thread_type = "AUTO"
         rate = vin.average_rate or vin.guessed_rate or Fraction(30)
         origin = (source.start_time or 0) / av.time_base
         video_tb = Fraction(1, 90000)
