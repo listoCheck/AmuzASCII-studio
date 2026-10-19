@@ -301,3 +301,49 @@ def test_gif_export_keeps_all_frames_timing_and_loops_without_audio(tmp_path, ti
                 means.append(np.asarray(gif.convert("RGB")).mean())
             assert abs(elapsed / 1000 - expected_duration) <= .03
             assert means[-1] > means[0]
+
+
+@pytest.mark.parametrize("format", ["mp4", "webm"])
+def test_export_preserves_readable_glyph_edges_at_fractional_cell_sizes(tmp_path, format):
+    from PIL import Image
+    from backend.video_render import AsciiFrames, transcode
+    source = tmp_path / "sharp-source.mp4"
+    with av.open(str(source), "w") as container:
+        stream = container.add_stream("libx264", rate=12)
+        stream.width, stream.height, stream.pix_fmt = 322, 182, "yuv420p"
+        for n in range(4):
+            frame = av.VideoFrame.from_image(Image.new("RGB", (322, 182), "white"))
+            frame.pts, frame.time_base = n, Fraction(1, 12)
+            for packet in stream.encode(frame):
+                container.mux(packet)
+        for packet in stream.encode(None):
+            container.mux(packet)
+    options = VideoOptions(columns=40, charset="custom", custom="M", colorMode="mono",
+                           foreground="#ffffff", background="#000000", inkBrightness=100, format=format)
+    expected = AsciiFrames(322, 182, options).render(Image.new("RGB", (322, 182), "white"))
+    output = tmp_path / ("sharp." + format)
+    transcode(source, output, options, video_info(source), lambda *_: None, threading.Event())
+    with av.open(str(output)) as decoded:
+        frames = list(decoded.decode(video=0))
+    assert len(frames) == 4
+    for frame in frames:
+        actual = frame.to_ndarray(format="rgb24")
+        assert actual.shape == expected.shape
+        assert np.abs(actual.astype(float) - expected).mean() < 4
+        assert actual.max() >= 250 and actual.min() <= 5
+
+
+def test_readable_export_does_not_blend_neighboring_cell_colors():
+    from PIL import Image
+    from backend.video_render import AsciiFrames
+    # Each sampled column has one pure primary. Glyph filtering may antialias
+    # against black, but must never leak a neighboring primary into its cell.
+    image = Image.fromarray(np.array([[[255, 0, 0], [0, 0, 255]] * 20] * 12, dtype=np.uint8))
+    renderer = AsciiFrames(322, 182, VideoOptions(columns=40, charset="custom", custom="M",
+        colorMode="original", contrast=0, background="#000000", inkBrightness=100))
+    actual = renderer.render(image)
+    edges = np.floor(np.arange(41) * 322 / 40).astype(int)
+    for x in range(40):
+        cell = actual[:, edges[x]:edges[x + 1]]
+        assert cell[..., 2 if x % 2 == 0 else 0].max() == 0
+        assert cell[..., 0 if x % 2 == 0 else 2].max() > 200

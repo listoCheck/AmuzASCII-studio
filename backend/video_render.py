@@ -127,6 +127,34 @@ class AsciiFrames:
             tile = Image.new("L", (max(1, math.ceil(font.getlength(symbol)), right - left), ink_height))
             ImageDraw.Draw(tile).text((tile.width / 2, -top), symbol, font=font, fill=255, anchor="ms")
             self.atlas[index] = np.asarray(tile.resize((self.cw, self.ch), Image.Resampling.LANCZOS))
+        # Readable grids are composed directly at the output resolution. The
+        # old ceil-sized grid was squeezed as a whole, blurring glyph edges and
+        # mixing colors across neighboring cells at fractional cell sizes.
+        self.native_grid = self.size[0] / self.columns >= 3 and self.size[1] / self.rows >= 3
+        if self.native_grid:
+            x_edges = np.floor(np.arange(self.columns + 1) * self.size[0] / self.columns).astype(int)
+            y_edges = np.floor(np.arange(self.rows + 1) * self.size[1] / self.rows).astype(int)
+            self.x_cell = np.repeat(np.arange(self.columns), np.diff(x_edges))
+            self.y_cell = np.repeat(np.arange(self.rows), np.diff(y_edges))
+            self.x_local = np.arange(self.size[0]) - x_edges[self.x_cell]
+            self.y_local = np.arange(self.size[1]) - y_edges[self.y_cell]
+            self.x_width = np.diff(x_edges)[self.x_cell]
+            self.y_height = np.diff(y_edges)[self.y_cell]
+            self.native_atlas = {}
+            for height in np.unique(np.diff(y_edges)):
+                native_font = font.font_variant(size=max(1, round(height * 100 / ink_height)))
+                boxes = [native_font.getbbox(ch, anchor="ls") for ch in self.ramp if ch != " "]
+                native_top = min((b[1] for b in boxes), default=-height)
+                native_bottom = max((b[3] for b in boxes), default=0)
+                for width in np.unique(np.diff(x_edges)):
+                    tiles = np.zeros((len(self.ramp), self.ch, self.cw), dtype=np.uint8)
+                    for index, symbol in enumerate(self.ramp):
+                        if symbol == " ":
+                            continue
+                        tile = Image.new("L", (max(1, math.ceil(native_font.getlength(symbol))), max(1, native_bottom - native_top)))
+                        ImageDraw.Draw(tile).text((tile.width / 2, -native_top), symbol, font=native_font, fill=255, anchor="ms")
+                        tiles[index, :height, :width] = np.asarray(tile.resize((int(width), int(height)), Image.Resampling.LANCZOS))
+                    self.native_atlas[int(width), int(height)] = tiles
         contrast = options.contrast * 2.55
         factor = 259 * (contrast + 255) / (255 * (259 - contrast))
         self.lut = np.array([round(255 * (max(0, min(255, factor * (i - 128) + 128 + options.brightness * 2.55)) / 255) ** (1 / options.gamma)) for i in range(256)], dtype=np.uint8)
@@ -166,6 +194,22 @@ class AsciiFrames:
         light = rgb @ weights
         level = 255 - light if s.invert else light
         indices = np.minimum(len(self.ramp) - 1, (level / 256 * len(self.ramp)).astype(np.int32))
+        if self.native_grid:
+            cell_indices = indices[self.y_cell[:, None], self.x_cell]
+            mask = np.empty((self.size[1], self.size[0]), dtype=np.uint8)
+            for (width, height), atlas in self.native_atlas.items():
+                yy = np.flatnonzero(self.y_height == height)
+                xx = np.flatnonzero(self.x_width == width)
+                mask[yy[:, None], xx] = atlas[cell_indices[yy[:, None], xx], self.y_local[yy, None], self.x_local[xx]]
+            if s.colorMode == "original":
+                result = np.empty((*mask.shape, 3), dtype=np.uint8)
+                for channel in range(3):
+                    result[..., channel] = self.blend[channel][rgb[self.y_cell[:, None], self.x_cell, channel], mask]
+                return result
+            if s.colorMode == "mono":
+                return self.blend[0, mask]
+            tones = np.minimum(31, np.rint(light).astype(np.int32) >> 3)
+            return self.blend[tones[self.y_cell[:, None], self.x_cell], mask]
         mask = self.atlas[indices]
         if s.colorMode == "original":
             result = np.empty((*mask.shape, 3), dtype=np.uint8)
@@ -200,7 +244,7 @@ def transcode(source_path, output_path, options, info, progress, stopping):
         vout.time_base = video_tb
         vout.codec_context.time_base = video_tb
         vout.codec_context.thread_count = min(4, os.cpu_count() or 1)
-        vout.options = {"crf": "18", "preset": "veryfast", "bf": "0"} if options.format == "mp4" else {} if options.format == "gif" else {"crf": "24", "b": "0", "deadline": "good", "cpu-used": "4", "lag-in-frames": "0"}
+        vout.options = {"crf": "14", "preset": "veryfast", "tune": "animation", "bf": "0"} if options.format == "mp4" else {} if options.format == "gif" else {"crf": "18", "b": "0", "deadline": "good", "cpu-used": "4", "lag-in-frames": "0"}
         durations = {}
         def mux_video(packets):
             for encoded in packets:

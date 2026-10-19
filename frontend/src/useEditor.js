@@ -15,6 +15,7 @@ export default function useEditor() {
   const busy=ref(false),error=ref(''),notice=ref(''),showOriginal=ref(false),zoom=ref(1),format=toRef(preferences,'imageFormat')
   const exportQuality=toRef(preferences,'exportQuality'),fileName=toRef(preferences,'fileName'),videoFormat=toRef(preferences,'videoFormat')
   const colorMode=ref('palette'),foreground=ref('#d1e8a0'),background=ref('#10140f'),paletteIndex=ref(0)
+  let originalBackground=background.value
   const canvasStyle=ref({}),frameTime=ref(0),vectorSrc=ref('')
   const detailDraft=ref(String(settings.columns)),isVideo=ref(false),duration=ref(0),isFullscreen=ref(false)
   const linkUrl=ref(''),linkLoading=ref(false),linkProgress=shallowRef(null)
@@ -179,7 +180,17 @@ export default function useEditor() {
     }catch{notice.value='Полноэкранный режим недоступен.'}
   }
   function timeLabel(value){const n=Number.isFinite(value)?Math.floor(value):0;return `${Math.floor(n/60)}:${String(n%60).padStart(2,'0')}`}
-  function selectPalette(i){paletteIndex.value=i;foreground.value=palettes[i].colors[3];background.value=palettes[i].bg;colorMode.value='palette'}
+  function selectPalette(i){
+    if(colorMode.value==='original')originalBackground=background.value
+    paletteIndex.value=i;foreground.value=palettes[i].colors[3];background.value=palettes[i].bg;colorMode.value='palette'
+  }
+  watch(colorMode,(mode,previous)=>{
+    // Palette backgrounds belong to the palette, especially the light Paper
+    // background. Restore the original-color background; retain manual colors.
+    if(mode==='original'&&previous!=='original'&&background.value===palettes[paletteIndex.value].bg){
+      background.value=originalBackground
+    }
+  },{flush:'sync'})
   function fit(){
     if(!stage.value||!result.value)return
     const rotated=settings.rotation%180

@@ -54,7 +54,7 @@ Search for the target symbol with `rg -n` and read a bounded section. Read the p
 - Detail is **40–1000 columns**; rows follow source proportions, maximum 2000. Preserve aspect ratio and keyboard/slider synchronization.
 - SVG is enabled only when glyphs have sufficient visible pixel size (`canUseVectorPreview`). Dense grids retain the filtered LIVE frame after slider release to prevent moiré/aliasing. Do not force SVG at high detail or enlarge a low-resolution glyph atlas.
 - Character brightness is **0–300%, default 120%**; it changes ink only, not background or the glyph selection ramp. Preserve it in presets and exports.
-- The original-colors palette button switches `colorMode` to `original`; it must not reset unrelated corrections.
+- Switching to original colors (button or dropdown) restores the background remembered before palette selection when the current background is palette-assigned. Keep manually edited backgrounds and unrelated corrections. Do not leave the light Paper background behind.
 
 ### Video
 
@@ -105,3 +105,5 @@ Search for the target symbol with `rg -n` and read a bounded section. Read the p
 - URL import progress includes `phase`, `loaded`, `total`, `total_estimated`, `speed_bps`, `elapsed_seconds`, `eta_seconds`. Aggregate YouTube video/audio bytes and update real Content-Length values as tracks start. Distinguish resolving/downloading/preparing; unknown totals/ETA stay null. Switching media only releases browser resources; server files use existing inactivity retention, not immediate deletion.
 
 - Playing video uses the GPU glyph atlas above 2,000 cells; readable grids cache native-size glyph coverage with eight subpixel phases and neighboring-cell compositing, while dense grids use mip filtering. Never apply the dense-grid mip blur to readable video glyphs; per-cell native fillText is reserved for smaller live grids and still/paused previews (up to 40,000 cells). Carry the playing flag into worker jobs; preserve grid resolution and SVG eligibility on pause. Browser preview-check benchmarks the 200-column path.
+
+- Readable backend export grids (at least 3 pixels per cell on each axis) use cached native-size glyph masks and integer cell boundaries directly at final output resolution. Do not resize the assembled readable grid: that blurs contours and mixes neighboring ink colors. Dense grids retain integrated downsampling. MP4 uses CRF 14 / animation / veryfast, WebM CRF 18; retain yuv420p player compatibility. Regression tests cover fractional-cell color isolation and decoded glyph fidelity in both codecs.
